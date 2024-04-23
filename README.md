@@ -126,6 +126,14 @@ FastDB fastDB = new FastDB(options);
 ### Parallel Serialization, Compression, Encryption
 If you are serializing, compressing and/or encrypting large object graphs you may want to enable parallel transformations on the data. You'll see better throughput with large records.
 
+|  Method                           | Product | Op/s      | FileSize |
+|--------------------------------- |-------- |----------:|---------:|
+| Large                            | FastDB  | 140,470.9 | 20096 KB |
+| LargeEncrypted                   | FastDB  | 100,435.0 | 20205 KB |
+| LargeEncryptedCompressed         | FastDB  |  68,064.7 | 14892 KB |
+| LargeEncryptedCompressedParallel | FastDB  | 138,588.9 | 14892 KB |
+
+
 ```C#
 FastDBOptions options = new FastDBOptions()
 {
@@ -140,17 +148,36 @@ FastDB fastDB = new FastDB(options);
 
 ### Message Contracts
 
-If you would like the smallest storage footprint possible, serialization contracts using built-in [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) integration is supported.
+If you would like the smallest storage footprint possible, serialization contracts using built-in [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) integration is supported. 
+
+| Serializer | Product | Op/s      | FileSize |
+|--------- |-------- |----------:|---------:|
+| JSON     | FastDB  | 198,628.3 |   653 KB |
+| Contract | FastDB  | 201,109.0 |   370 KB |
 
 ```C#
+// create a class
+public class Customer
+{
+    [Key(0)]
+    public int Id { get; set; }
+    [Key(1)]
+    public string Name { get; set; }
+    [Key(2)]
+    public DateTime DOB { get; set; }
+    [Key(3)]
+    public string Phone { get; set; }
+    [Key(4)]
+    public bool IsActive { get; set; }
+}
+
 FastDBOptions options = new FastDBOptions()
 {
-   BufferMode = BufferModeType.WriteParallelEnabled,
-   MaxDegreesOfParallelism = 8,
-   IsEncryptionEnabled = true,
-   EncryptionPassword = "open-sesame",
-   IsCompressed = true,
+   Serializer = SerializerType.MessagePack_Contract,
 };
 FastDB fastDB = new FastDB(options);
+
+// create a collection (key, value)
+var customers = fastDB.GetCollection<int, Customer>();
 ```
 
