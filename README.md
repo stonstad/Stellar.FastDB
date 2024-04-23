@@ -3,8 +3,7 @@ The extremely fast Stellar.FastDB document store for C# is ~100x faster than its
 
 ---
 
-<img width="864" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/de7e5194-83ef-4b7d-9295-b5691053a146">
-
+<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/765a4f19-8242-41d8-ae83-52eb26238e19">
 
 ---
 
@@ -127,14 +126,6 @@ FastDB fastDB = new FastDB(options);
 ### Parallel Serialization, Compression, Encryption
 If you are serializing, compressing and/or encrypting large object graphs you may want to enable parallel transformations on the data. You'll see better throughput with large records.
 
-|  Method                           | Product | Op/s      | FileSize |
-|--------------------------------- |-------- |----------:|---------:|
-| Large                            | FastDB  | 140,470.9 | 20096 KB |
-| LargeEncrypted                   | FastDB  | 100,435.0 | 20205 KB |
-| LargeEncryptedCompressed         | FastDB  |  68,064.7 | 14892 KB |
-| LargeEncryptedCompressedParallel | FastDB  | 138,588.9 | 14892 KB |
-
-
 ```C#
 FastDBOptions options = new FastDBOptions()
 {
@@ -147,14 +138,16 @@ FastDBOptions options = new FastDBOptions()
 FastDB fastDB = new FastDB(options);
 ```
 
+|  Method                           | Product | Op/s      | FileSize |
+|--------------------------------- |-------- |----------:|---------:|
+| Large                            | FastDB  | 140,470.9 | 20096 KB |
+| LargeEncrypted                   | FastDB  | 100,435.0 | 20205 KB |
+| LargeEncryptedCompressed         | FastDB  |  68,064.7 | 14892 KB |
+| LargeEncryptedCompressedParallel | FastDB  | 138,588.9 | 14892 KB |
+
 ### Message Contracts
 
 If you would like the smallest storage footprint possible, serialization contracts using built-in [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) integration is supported. 
-
-| Serializer | Product | Op/s      | FileSize |
-|--------- |-------- |----------:|---------:|
-| JSON     | FastDB  | 198,628.3 |   653 KB |
-| Contract | FastDB  | 201,109.0 |   370 KB |
 
 ```C#
 // create a class
@@ -180,5 +173,17 @@ FastDB fastDB = new FastDB(options);
 
 // create a collection (key, value)
 var customers = fastDB.GetCollection<int, Customer>();
+
+// add customer
+customers.Add(customer.Id, customer);
+customres.Flush()
+
+// close database
+fastDB.Close();
 ```
 
+
+| Serializer | Product | Op/s      | FileSize |
+|--------- |-------- |----------:|---------:|
+| JSON     | FastDB  | 198,628.3 |   653 KB |
+| Contract | FastDB  | 201,109.0 |   370 KB |
