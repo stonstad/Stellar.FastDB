@@ -3,7 +3,8 @@ The extremely fast Stellar.FastDB document store for C# is ~100x faster than its
 
 ---
 
-<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/55b23033-e5d8-4d0a-ad88-93abcf846d34">
+<img width="864" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/de7e5194-83ef-4b7d-9295-b5691053a146">
+
 
 ---
 
