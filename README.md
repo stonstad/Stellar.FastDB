@@ -1,40 +1,68 @@
-# Stellar.FastDB - a High Performance .NET Document Store
-An embedded datatabase designed for high concurrency workloads.
+# Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
+The extremely fast Stellar.FastDB document store for C# is ~100x faster than its peers. FastDB is designed for performance and high concurrency.
 
 ---
 
-Stellar.FastDB is an embedded document store built for performance and high concurrency.
+<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/55b23033-e5d8-4d0a-ad88-93abcf846d34">
+
+---
+
+**Stellar.FastDB features ...**
 
 - Serverless embedded document storage
-- Simple thread-safe API
-- 100% C# code for .NET 5,6,7,8.0 in a single DLL (less than 30 kb)
-- Support multiple readers and writers with no explicit locking required.
-- Schema-less storage with change resiliance.  
-- Optimized storage footprint with configurable formats (MessagePack, BSON).  
-- Supports asynchronous programming with async and await.
-- LZH Compresion
-- AES Encryption
-- Confirgurable parallelization options for serialization, compression, and encryption.
+- Simple thread-safe API with support for asynchronous programming (async/await)
+- 100% C# code for .NET 5.0/6.0/7.0/8.0 delivered as a single DLL (60 kb)
+- Supports multiple readers and writers without external locking
+- Schema-less NoSQL storage with change resiliance
+- Optimized and configurable storage footprint ([MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp), JSON)
+- LZH Compresion and AES Encryption
+- Parallelized serialization, compression, and encryption
 - Relational querying through LINQ
 - End-to-end type safety
-- Supports for composite keys
+- Support for composite keys
 - Open source and free to use, including commerical use.
 - Install from Nuget. Install-Package Stellar.FastDB
 
-## Should I use Stellar.FastDB?
+## Common Questions
+
+** Why did you create Stellar.FasbDB?
+
+I'm a game developer and I needed a high concurency storage solution for player-run game servers. Installing a local database would be asking too much of players. I discovered that existing storage solutions are slow and suffer from concurrency issues when there are too many readers and writers. This doesn't work for game servers which have large numbers of players reading and writing data.
+
+**Should I use Stellar.FastDB?**
 
 Use Stellar.FastDB if you need:
 - Embedded durable storage (i.e. game server, desktop app)
-- Thread-safety and high in-process concurrency
-- High throughput
+- Thread-safety with high concurrency support
+- High read and write throughput
 - Small storage footprint
 
 Do not use this database if you need:
 - Interprocess connection sharing
 - Single file storage
 
+## Benchmarks
+
+A complete set of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) with reproduction code is available.
+
+| Method      | Product | Op/s    | FileSize |
+|------------ |-------- |--------:|---------:|
+| Insert10000 | FastDB  | 197,899 |   653 KB |
+| Insert10000 | LiteDB  |   1,300 |  1656 KB |
+| Insert10000 | SQLite  |     754 |   444 KB |
+| Insert10000 | VistaDB |   2,649 |  1244 KB |
+
+---
 
 ## How to use Stellar.FastDB
+
+FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB. Using default settings, all FastDB writes are immediate consistency.
+
+## Code Samples
+
+### Getting Started
+
+This example shows how to create a database instance, store a customer, update a customer, query for a customer, and lastly, close the database.
 
 ```C#
 // create a class
@@ -71,5 +99,58 @@ customers.Update(customer);
 
 // use LINQ to query documents
 var matches = customers.Where(a => a.Name.StartsWith("John") && a.Telephone > 5555555);
+
+// close database
+fastDB.Close();
+```
+
+### Encryption
+```C#
+FastDBOptions options = new FastDBOptions()
+{
+   IsEncrypted = true,
+   EncryptionPassword = "open-sesame",
+};
+FastDB fastDB = new FastDB(options);
+```
+
+### Compression
+```C#
+FastDBOptions options = new FastDBOptions()
+{
+   IsCompressed = true,
+};
+FastDB fastDB = new FastDB(options);
+```
+
+### Parallel Serialization, Compression, Encryption
+If you are serializing, compressing and/or encrypting large object graphs you may want to enable parallel transformations on the data. You'll see better throughput with large records.
+
+```C#
+FastDBOptions options = new FastDBOptions()
+{
+   BufferMode = BufferModeType.WriteParallelEnabled,
+   MaxDegreesOfParallelism = 8,
+   IsEncryptionEnabled = true,
+   EncryptionPassword = "open-sesame",
+   IsCompressed = true,
+};
+FastDB fastDB = new FastDB(options);
+```
+
+### Message Contracts
+
+If you would like the smallest storage footprint possible, serialization contracts using built-in [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) integration is supported.
+
+```C#
+FastDBOptions options = new FastDBOptions()
+{
+   BufferMode = BufferModeType.WriteParallelEnabled,
+   MaxDegreesOfParallelism = 8,
+   IsEncryptionEnabled = true,
+   EncryptionPassword = "open-sesame",
+   IsCompressed = true,
+};
+FastDB fastDB = new FastDB(options);
 ```
 
