@@ -1,6 +1,7 @@
 ﻿using MessagePack;
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Stellar.Collections
@@ -41,12 +42,12 @@ namespace Stellar.Collections
         public string FileExtension { get; init; } = "db";
         public SerializerType Serializer { get; init; }
         public BufferModeType BufferMode { get; init; }
-        public int MaxDegreeOfParallelism { get; init; } = 16;
+        public int MaxDegreeOfParallelism { get; init; } = 8;
         public bool IsMemoryOnlyEnabled { get; init; }
         public bool IsReadOnlyEnabled { get; init; }
         public bool IsEncryptionEnabled { get; init; }
         public string EncryptionPassword { get; init; }
-        public string EncryptionSalt { get; init; }
+        public HashAlgorithmName EncyptionAlgorithm { get; init; } = HashAlgorithmName.SHA256;
         public bool IsCompressionEnabled { get; init; }
         public MessagePackSerializerOptions MessagePackOptions { get; init; }
         public JsonSerializerOptions JsonSerializerOptions { get; init; }
@@ -74,7 +75,7 @@ namespace Stellar.Collections
             IsReadOnlyEnabled = copy.IsReadOnlyEnabled;
             IsEncryptionEnabled = copy.IsEncryptionEnabled;
             EncryptionPassword = copy.EncryptionPassword;
-            EncryptionSalt = copy.EncryptionSalt;
+            EncyptionAlgorithm = copy.EncyptionAlgorithm;
             IsCompressionEnabled = copy.IsCompressionEnabled;
             MessagePackOptions = copy.MessagePackOptions;
             JsonSerializerOptions = copy.JsonSerializerOptions;

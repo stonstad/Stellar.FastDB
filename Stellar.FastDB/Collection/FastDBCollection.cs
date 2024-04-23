@@ -38,7 +38,7 @@ namespace Stellar.Collections
         public void Load()
         {
             if (_IsLoaded)
-                ThrowHelper.CollectionOpen(Name);
+                throw ThrowHelper.CollectionOpen(Name);
             else
                 _IsLoaded = true;
 
@@ -77,7 +77,7 @@ namespace Stellar.Collections
                 throw ThrowHelper.CollectionClosed(Name);
 
             if (_FastDBStream != null && _WriteToFileSystem)
-                _FastDBStream.Flush(false);
+                _FastDBStream.Flush();
         }
 
         public async Task FlushAsync()
@@ -86,7 +86,7 @@ namespace Stellar.Collections
                 throw ThrowHelper.CollectionClosed(Name);
 
             if (_FastDBStream != null && _WriteToFileSystem)
-                await _FastDBStream.FlushAsync(false);
+                await _FastDBStream.FlushAsync();
         }
 
         public void Close()
@@ -97,7 +97,7 @@ namespace Stellar.Collections
             IsClosed = true;
             if (_FastDBStream != null && _WriteToFileSystem)
             {
-                _FastDBStream.Flush(updateRecordsIndex: true);
+                _FastDBStream.Flush();
                 _FastDBStream.Dispose();
                 _FastDBStream = null;
             }
@@ -112,7 +112,7 @@ namespace Stellar.Collections
             IsClosed = true;
             if (_FastDBStream != null && _WriteToFileSystem)
             {
-                await _FastDBStream.FlushAsync(updateRecordsIndex: true);
+                await _FastDBStream.FlushAsync();
                 _FastDBStream.Dispose();
                 _FastDBStream = null;
             }

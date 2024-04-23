@@ -113,6 +113,20 @@ namespace Stellar.Collections
             }, _CancellationTokenSource.Token);
         }
 
+        private void ResetSemaphores() // enables locking
+        {
+            if (Options.BufferMode == BufferModeType.WriteEnabled)
+            {
+                _FileSystemChannelEmpty.Reset();
+            }
+            else if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
+            {
+                _SerializationChannelEmpty.Reset();
+                _SequentialProcessingChannelEmpty.Reset();
+                _FileSystemChannelEmpty.Reset();
+            }
+        }
+
         private void StartTasks()
         {
             if (Options.BufferMode != BufferModeType.Disabled)

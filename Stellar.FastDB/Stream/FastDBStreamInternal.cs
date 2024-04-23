@@ -9,10 +9,12 @@ namespace Stellar.Collections
 {
     internal sealed partial class FastDBStream<TKey, TValue> where TKey : struct
     {
-        private const int _RecordsIndexPosition =
-            sizeof(ushort) +  // version
-            sizeof(byte) +    // serializer
-            sizeof(byte);     // format
+        private const int _HeaderSize =
+            sizeof(ushort) +    // version (2)
+            sizeof(byte) +      // serializer (1)
+            sizeof(byte) +      // format (1)
+            sizeof(byte) * 16 + // encryption salt (16)
+            sizeof(byte) * 16;  // encryption checksum (16)
 
         private void ReadHeaderInternal()
         {
@@ -27,41 +29,54 @@ namespace Stellar.Collections
                 IsCompressionEnabled = _Format.HasFlag(FormatType.Compressed),
                 IsEncryptionEnabled = _Format.HasFlag(FormatType.Encrypted),
             };
+
+            _EncryptionSalt = _BinaryReader.ReadBytes(16);
+            _EncryptionChecksum = _BinaryReader.ReadBytes(16);
         }
 
         private void CreateHeaderInternal()
         {
             _BinaryWriter.Seek(0, SeekOrigin.Begin);
-            _BinaryWriter.Write(Version);
-            _BinaryWriter.Write((byte)Serializer);
-            _BinaryWriter.Write((byte)_Format);
-            _BinaryWriter.Write(_Allocated.Count);
-            _BinaryWriter.Write(_Deleted.Count);
-            _BinaryWriter.Flush();
-        }
+            _BinaryWriter.Write(Version);                   // 2 bytes
+            _BinaryWriter.Write((byte)Serializer);          // 1 byte
+            _BinaryWriter.Write((byte)_Format);             // 1 byte
+            if (Options.IsEncryptionEnabled)
+            {
+                _EncryptionChecksum = Encrypt(new byte[] { _EncryptionSalt[0], _EncryptionSalt[1] });
+                _BinaryWriter.Write(_EncryptionSalt);       // 16 bytes
+                _BinaryWriter.Write(_EncryptionChecksum);   // 16 bytes
+             }
+            else
+                _BinaryWriter.Write(new byte[32]);          // 32 bytes
 
-        private void UpdateRecordsIndex()
-        {
-            _BinaryWriter.Seek(_RecordsIndexPosition, SeekOrigin.Begin);
-            _BinaryWriter.Write(_Allocated.Count);
-            _BinaryWriter.Write(_Deleted.Count);
+            Debug.Assert(_Stream.Position == _HeaderSize);
             _BinaryWriter.Flush();
         }
 
         private void LoadRecords(ConcurrentDictionary<TKey, TValue> collection)
         {
-            int allocatedCount = _BinaryReader.ReadInt32();
-            int deletedCount = _BinaryReader.ReadInt32();
+            switch (Version)
+            {
+                case 1:
+                    LoadRecords_V1(collection);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        private void LoadRecords_V1(ConcurrentDictionary<TKey, TValue> collection)
+        {
             while (_Stream.Position < _Stream.Length)
             {
-                //(TKey Key, TValue Value)? record = ReadInternalBytes();
-                (TKey Key, TValue Value)? record = ReadInternalStream();
+                //(TKey Key, TValue Value)? record = ReadInternalBytes_V1();
+                (TKey Key, TValue Value)? record = ReadInternalStream_V1();
                 if (record.HasValue)
                     collection.TryAdd(record.Value.Key, record.Value.Value);
             }
         }
 
-        private (TKey Key, TValue Value)? ReadInternalBytes()
+        private (TKey Key, TValue Value)? ReadInternalBytes_V1()
         {
             int position;
             byte state;
@@ -123,7 +138,7 @@ namespace Stellar.Collections
                 throw new ArgumentOutOfRangeException();
         }
 
-        private (TKey Key, TValue Value)? ReadInternalStream()
+        private (TKey Key, TValue Value)? ReadInternalStream_V1()
         {
             int position;
             byte state;
@@ -169,85 +184,6 @@ namespace Stellar.Collections
             else
                 throw new ArgumentOutOfRangeException();
         }
-
-        //private bool AddInternalOld(TKey key, TValue value, byte[] bytes = null)
-        //{
-        //    if (_Stream == null)
-        //        return false;
-
-        //    // serialization
-        //    try
-        //    {
-        //        if (bytes == null)
-        //            bytes = Serialize(key, value);
-        //    }
-        //    catch
-        //    {
-        //        if (_Options.SerializationFailureBehavior == SerializationFailureBehaviorType.Exception)
-        //            throw;
-        //        else
-        //            return false;
-        //    }
-
-        //    // persistence
-        //    int bytesLength = bytes.Length;
-
-        //    int length = 0;
-        //    length += sizeof(byte);     // state
-        //    length += sizeof(int);      // content length
-        //    length += bytesLength;    // content
-
-        //    lock (_StreamSyncRoot)
-        //    {
-        //        long insertionPosition;
-
-        //        try
-        //        {
-        //            // find deallocated memory
-        //            (int Position, int Length)? deallocatedMemory = FindDeallocatedMemory(length);
-
-        //            if (deallocatedMemory.HasValue)
-        //            {
-        //                _Deleted.Remove(deallocatedMemory.Value.Position);
-        //                _Stream.Seek(deallocatedMemory.Value.Position, SeekOrigin.Begin);
-        //            }
-        //            else
-        //                _Stream.Seek(0, SeekOrigin.End);
-
-        //            insertionPosition = _Stream.Position;
-
-        //            // write content but don't commit yet
-        //            _BinaryWriter.Write((byte)MemoryStateType.Pending);
-        //            _BinaryWriter.Write(bytesLength);
-        //            _BinaryWriter.Write(bytes);
-        //            _BinaryWriter.Flush();
-        //        }
-        //        catch
-        //        {
-        //            if (_Options.StorageFailureBehavior == StorageFailureBehaviorType.Exception)
-        //                throw;
-        //            else
-        //                return false;
-        //        }
-
-        //        // commit write (only needed if write is successful)
-        //        try
-        //        {
-        //            _Stream.Seek(insertionPosition, SeekOrigin.Begin);
-        //            _BinaryWriter.Write((byte)MemoryStateType.Allocated);
-        //            _BinaryWriter.Flush();
-        //            _Allocated.Add(key, new Index(insertionPosition, length));
-        //            return true;
-        //        }
-        //        catch
-        //        {
-        //            if (_Options.StorageFailureBehavior == StorageFailureBehaviorType.Exception)
-        //                throw;
-        //            else
-        //                return false;
-        //        }
-        //    }
-        //}
 
         private bool AddInternal(TKey key, TValue value, byte[] bytes = null)
         {

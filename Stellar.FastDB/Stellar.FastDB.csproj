@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net7.0;net6.0;</TargetFrameworks>
+    <TargetFrameworks>net8.0; net7.0; net6.0;</TargetFrameworks>
     <Nullable>disable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Authors>Shaun Tonstad</Authors>
@@ -10,17 +10,23 @@
     <Copyright>Shaun Tonstad</Copyright>
     <PackageProjectUrl>https://github.com/stonstad/Stellar.FastDB</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="2.5.140" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="README.md">
+    <None Include="..\LICENSE" Link="LICENSE">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
+    <None Include="..\README.md" Link="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MessagePack" Version="2.5.140" />
   </ItemGroup>
 
 </Project>

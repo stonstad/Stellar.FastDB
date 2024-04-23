@@ -2,7 +2,6 @@
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace Stellar.Collections
 {
@@ -13,13 +12,24 @@ namespace Stellar.Collections
         private ICryptoTransform _AesDecryptor;  // not thread safe
         private MemoryStream _EncryptionStream = new MemoryStream(); // not thread safe
         private MemoryStream _DecryptionStream = new MemoryStream(); // not thread safe
+        private byte[] _EncryptionSalt;
+        private byte[] _EncryptionChecksum;
 
-        private void InitializeAesEncryption()
+        public byte[] GenerateEncryptionSalt()
         {
-            _Aes = Aes.Create();
-            byte[] saltBytes = Encoding.UTF8.GetBytes(Options.EncryptionSalt);
-            Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, saltBytes, 1000, HashAlgorithmName.SHA256);
+            byte[] saltBytes = new byte[16];
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+                rng.GetBytes(saltBytes);
+            return saltBytes;
+        }
 
+        private void InitializeAesEncryption(byte[] encryptionSalt)
+        {
+            Debug.Assert(encryptionSalt != null && encryptionSalt.Length > 0);
+
+            _EncryptionSalt = encryptionSalt;
+            _Aes = Aes.Create();
+            Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncyptionAlgorithm);
             byte[] keyIVBytes = pdb.GetBytes((_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
             _Aes.Key = keyIVBytes.Take(_Aes.KeySize / 8).ToArray();
             _Aes.IV = keyIVBytes.Skip(_Aes.KeySize / 8).Take(_Aes.BlockSize / 8).ToArray();
@@ -30,6 +40,9 @@ namespace Stellar.Collections
 
         private byte[] Encrypt(byte[] dataToEncrypt)
         {
+            Debug.Assert(dataToEncrypt != null && dataToEncrypt.Length > 0);
+            Debug.Assert(_Aes != null);
+
             if (Options.BufferMode == BufferModeType.WriteParallelEnabled) // multithreaded
             {
                 using (MemoryStream encryptionStream = new MemoryStream())
@@ -62,6 +75,7 @@ namespace Stellar.Collections
         private byte[] Decrypt(byte[] dataToDecrypt)
         {
             Debug.Assert(dataToDecrypt != null && dataToDecrypt.Length > 0);
+            Debug.Assert(_Aes != null);
 
             if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
             {

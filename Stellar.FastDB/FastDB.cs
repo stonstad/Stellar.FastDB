@@ -22,18 +22,28 @@ namespace Stellar.Collections
         {
         }
 
+        public FastDB(string databaseName, FastDBOptions options) : this(new FastDBOptions(options) { DatabaseName = databaseName })
+        {
+        }
+
         public FastDB(FastDBOptions options)
         {
-            if (options.IsEncryptionEnabled)
-            {
-                if (string.IsNullOrEmpty(options.EncryptionPassword))
-                    throw new ArgumentOutOfRangeException($"{nameof(options.EncryptionPassword)} may not be null");
-                if (string.IsNullOrEmpty(options.EncryptionSalt))
-                    throw new ArgumentOutOfRangeException($"{nameof(options.EncryptionSalt)} may not be null");
-            }
-
             Options = options;
+
+            if (string.IsNullOrWhiteSpace(Options.DatabaseName))
+                throw ThrowHelper.DatabaseNameMayNotBeNullOrEmpty();
+
+            foreach (char c in Options.DatabaseName)
+                if (!(char.IsLetterOrDigit(c) || c == ' ' || c == '_'))
+                    throw ThrowHelper.DatabaseNameMayNotContainSpecialCharacters(Options.DatabaseName);
+
+            if (Options.IsEncryptionEnabled)
+            {
+                if (string.IsNullOrEmpty(Options.EncryptionPassword))
+                    throw ThrowHelper.EncryptionPasswordRequired();
+            }
         }
+
 
         public IFastDBCollection<K, V> GetCollection<K, V>(string collectionName = null, FastDBOptions options = null) where K : struct
         {

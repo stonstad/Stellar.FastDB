@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.34330.188
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Stellar.FastDB", "Stellar.FastDB.csproj", "{7327119A-3966-4F98-ACAD-E7090E4C4D75}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Stellar.FastDB", "Stellar.FastDB\Stellar.FastDB.csproj", "{7327119A-3966-4F98-ACAD-E7090E4C4D75}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Stellar.FastDB.Tests", "Stellar.FastDB.Tests\Stellar.FastDB.Tests.csproj", "{086BC443-F568-4BD0-B1C2-E370248CDA26}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{7327119A-3966-4F98-ACAD-E7090E4C4D75}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7327119A-3966-4F98-ACAD-E7090E4C4D75}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7327119A-3966-4F98-ACAD-E7090E4C4D75}.Release|Any CPU.Build.0 = Release|Any CPU
+		{086BC443-F568-4BD0-B1C2-E370248CDA26}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{086BC443-F568-4BD0-B1C2-E370248CDA26}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{086BC443-F568-4BD0-B1C2-E370248CDA26}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{086BC443-F568-4BD0-B1C2-E370248CDA26}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

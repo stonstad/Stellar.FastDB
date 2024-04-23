@@ -21,14 +21,6 @@ Stellar.FastDB is an embedded document store built for performance and high conc
 - Open source and free to use, including commerical use.
 - Install from Nuget. Install-Package Stellar.FastDB
 
-## How fast is Stellar.FastDB?
-
-Very fast. 
-
-Benchmark Here
-
-Link to Benchmarks Repository
-
 ## Should I use Stellar.FastDB?
 
 Use Stellar.FastDB if you need:
@@ -41,11 +33,8 @@ Do not use this database if you need:
 - Interprocess connection sharing
 - Single file storage
 
-## Who is using Stellar.FastDB?
 
-Stellar.FastDB is battle tested in Stellar Conquest, our high-concurency multiplayer game. All player-hosted game servers use Stellar.FastDB for local storage. If you find FastDB useful, please consider visiting our Steam page and wishlisting or purchasing our game!
-
-## How to use StellarDB
+## How to use Stellar.FastDB
 
 ```C#
 // create a class
@@ -83,19 +72,4 @@ customers.Update(customer);
 // use LINQ to query documents
 var matches = customers.Where(a => a.Name.StartsWith("John") && a.Telephone > 5555555);
 ```
-
-```C#
-// TODO
-```
-
-Encryption
-
-
-Compression
-
-Parallel Transformation (Serialization, Compression, Encryption
-
-
-
-
 

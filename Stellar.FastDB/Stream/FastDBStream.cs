@@ -2,7 +2,9 @@
 using MessagePack.Resolvers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -69,21 +71,25 @@ namespace Stellar.Collections
             {
                 if (_Stream.Length == 0)
                 {
-                    Initialize();
+                    InitializeStream();
+                    InitializeEncryption();
                     CreateHeaderInternal();
+                    ValidateEncryption();
                 }
                 else
                 {
                     ReadHeaderInternal();
-                    Initialize();
+                    InitializeStream();
+                    InitializeEncryption();
+                    ValidateEncryption();
                     LoadRecords(collection);
-                    if (!Options.IsReadOnlyEnabled)
-                        UpdateRecordsIndex();
                 }
             }
+
+            StartTasks();
         }
 
-        private void Initialize()
+        private void InitializeStream()
         {
             if (Options.Serializer == SerializerType.MessagePack_Contractless)
             {
@@ -110,14 +116,38 @@ namespace Stellar.Collections
                 if (Options.JsonSerializerOptions == null)
                     _JsonSerializerOptions = new JsonSerializerOptions();
             }
+        }
 
+        private void InitializeEncryption()
+        {
             if (Options.IsEncryptionEnabled)
             {
-                InitializeAesEncryption();
+                if (_EncryptionSalt == null)
+                    _EncryptionSalt = GenerateEncryptionSalt();
+                InitializeAesEncryption(_EncryptionSalt);
                 _Format |= FormatType.Encrypted;
             }
+        }
 
-            StartTasks();
+        public void ValidateEncryption()
+        {
+            if (Options.IsEncryptionEnabled)
+            {
+                try
+                {
+                    byte[] decryptedChecksum = Decrypt(_EncryptionChecksum);
+                    if (decryptedChecksum.Length != 2 ||
+                        decryptedChecksum[0] != _EncryptionSalt[0] ||
+                        decryptedChecksum[1] != _EncryptionSalt[1])
+                    {
+                        throw ThrowHelper.DecryptionFailed();
+                    }
+                }
+                catch
+                {
+                    throw ThrowHelper.DecryptionFailed();
+                }
+            }
         }
 
         public bool Add(TKey key, TValue value)
@@ -129,6 +159,7 @@ namespace Stellar.Collections
                 QueueEntry entry = _QueueEntryPool.Rent();
                 entry.Set(BufferOperationType.Add, key, value);
 
+                ResetSemaphores();
                 if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
                     _SerializationChannel.Writer.TryWrite(entry);
                 else
@@ -161,6 +192,7 @@ namespace Stellar.Collections
                 QueueEntry entry = _QueueEntryPool.Rent();
                 entry.Set(BufferOperationType.Remove, key);
 
+                ResetSemaphores();
                 if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
                     _SerializationChannel.Writer.TryWrite(entry);
                 else
@@ -183,6 +215,7 @@ namespace Stellar.Collections
                 QueueEntry entry = _QueueEntryPool.Rent();
                 entry.Set(BufferOperationType.Update, key, value);
 
+                ResetSemaphores();
                 if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
                     _SerializationChannel.Writer.TryWrite(entry);
                 else
@@ -206,7 +239,7 @@ namespace Stellar.Collections
             return _Stream.Length;
         }
 
-        public void Flush(bool updateRecordsIndex)
+        public void Flush()
         {
             if (Options.IsReadOnlyEnabled)
                 return;
@@ -225,15 +258,11 @@ namespace Stellar.Collections
 
             _QueueEntryPool.Clear();
             _BufferPool.Clear();
-
-            lock (_StreamLock)
-                if (updateRecordsIndex)
-                    UpdateRecordsIndex();
         }
 
-        public async Task FlushAsync(bool updateRecordsIndex)
+        public async Task FlushAsync()
         {
-            await Task.Run(() => Flush(updateRecordsIndex));
+            await Task.Run(() => Flush());
         }
 
         public void Clear()
