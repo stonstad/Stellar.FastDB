@@ -25,7 +25,7 @@ The extremely fast Stellar.FastDB document store for C# is ~100x faster than its
 
 ## Common Questions
 
-** Why did you create Stellar.FasbDB?
+**Why did you create Stellar.FasbDB?**
 
 I'm a game developer and I needed a high concurency storage solution for player-run game servers. Installing a local database would be asking too much of players. I discovered that existing storage solutions are slow and suffer from concurrency issues when there are too many readers and writers. This doesn't work for game servers which have large numbers of players reading and writing data.
 
