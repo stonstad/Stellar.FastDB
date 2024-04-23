@@ -43,20 +43,20 @@ Do not use this database if you need:
 
 ## Benchmarks
 
-A complete set of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) with reproduction code is available.
+A complete list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) are available along with a reproduction project.
 
 | Method      | Product | Op/s    | FileSize |
 |------------ |-------- |--------:|---------:|
-| Insert10000 | FastDB  | 197,899 |   653 KB |
-| Insert10000 | LiteDB  |   1,300 |  1656 KB |
-| Insert10000 | SQLite  |     754 |   444 KB |
-| Insert10000 | VistaDB |   2,649 |  1244 KB |
+| Insert 10,000 | FastDB  | 197,899 |   653 KB |
+| Insert 10,000 | LiteDB  |   1,300 |  1656 KB |
+| Insert 10,000 | SQLite  |     754 |   444 KB |
+| Insert 10,000 | VistaDB |   2,649 |  1244 KB |
 
 ---
 
 ## How to use Stellar.FastDB
 
-FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB. Using default settings, all FastDB writes are immediate consistency.
+FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB! When using default settings, all FastDB writes are immediate and consistent.
 
 ## Code Samples
 
