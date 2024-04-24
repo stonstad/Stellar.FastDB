@@ -28,7 +28,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 
 ## Benchmarks
 
-A complete list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) are available along with a reproduction project.
+A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a project for reproduction, is available.
 
 **Insert**
 | Method      | Product | Op/s    | FileSize |
@@ -46,40 +46,39 @@ A complete list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 
 ## Common Questions
 
-**Why did you create Stellar.FasbDB?**
+**Why was Stellar.FasbDB created?**
 
-I'm a game developer and I needed a high concurency storage solution for player-managed game servers. Installing a local database would be asking too much of players. I discovered that existing storage solutions are slow or suffer from concurrency issues when there are too many concurrent readers and writers. This doesn't work for game servers which support large numbers of players.
+As a game developer, I needed a high-concurrency storage solution suitable for player-managed game servers. Installing traditional local databases posed too high a demand on players. I found that the available storage solutions were either too slow or struggled with concurrency issues during high volumes of simultaneous reads and writes. Such limitations are impractical for game servers, which must support a large number of players efficiently.
 
 **Should I use Stellar.FastDB?**
 
 Use Stellar.FastDB if you need:
-- Embedded durable storage (i.e. game server, desktop app)
-- Thread-safety with high concurrency support
-- High read and write throughput
-- Small storage footprint
+- Embedded, durable storage suitable for applications like game servers and desktop apps.
+- Thread safety with robust supporst for high concurrency.
+- High throughput for both reading and writing data.
+- A minimal data storage footprint.
 
 Do not use this database if you need:
-- Interprocess connection sharing
-- Single file storage
+- Sharing conections between processes.
+- Storing data in a single file.
 
-** What additional features are on the roadmap? **
+** What additional features are planned for Stellar.FastDB?
 
-- Integrated backup and restore to a single file
-- Memory defragmentation algorithm
-- Optional structured storage mode with defined schmea for improved storage efficiency
-- .NET Standard 2.1 support
-- Unity support
+- Integrated backup and restore functionality into a single file.
+- A memory defragmentation algorithm to further optimize performance.
+- An optional structured storage format with defined schema to further improve storage efficiency.
+- Support for .NET Standard 2.1 and Unity.
 
 ## How to use Stellar.FastDB
 
-- FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB! When using default settings, all FastDB writes are immediate and consistent.
-- Install Stellar.FastDB from Nuget by searching for Stellar.FastDB or running package manager command 'Install-Package Stellar.FastDB'. 
-
+- Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the traansiiton to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
+- To get started with Stellar.FastDB, install it from NuGet. Search for 'Stellar.FastDB' or use the package manager command 'Install-Package Stellar.FastDB'.
+  
 ## Code Samples
 
 ### Getting Started
 
-This example shows how to create a database instance, store a customer, update a customer, query for a customer, and lastly, close the database.
+Below is a basic example demonstrating how to interact with Stellar.FastDB. This includes creating a database instance, storing customer data, updating it, retrieving it, and properly closing the database connection:
 
 ```C#
 // create a class
@@ -140,8 +139,8 @@ FastDBOptions options = new FastDBOptions()
 FastDB fastDB = new FastDB(options);
 ```
 
-### Parallel Serialization, Compression, Encryption
-If you are serializing, compressing and/or encrypting large object graphs you may want to enable parallel transformations on the data. You'll see better throughput with large records.
+### Parallel Data Transformation
+For operations involving serialization, compression, or encryption of large object graphs, enabling parallel data transformations can significantly enhance throughput, especially with large records. This method effectively leverages multiple processor cores to accelerate write operations.
 
 ```C#
 FastDBOptions options = new FastDBOptions()
@@ -165,7 +164,7 @@ FastDB fastDB = new FastDB(options);
 
 ### Message Contracts
 
-If you would like smallest storage footprint possible, serialization contracts using [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) are supported. Adding MessagePack attributes (see example below) instruct the serializer how to better package the data. This option is disabled by default and is not included in most benchmarks.
+To achieve the smallest possible storage footprint, Stellar.FastDB supports serialization contracts using MessagePack. By adding [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) attributes to your data models (as shown in the example below), you can instruct the serializer to package the data more efficiently. Note that this feature is disabled by default and is typically not included in most benchmarks.
 
 ```C#
 // create a class
