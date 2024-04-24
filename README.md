@@ -162,7 +162,7 @@ FastDB fastDB = new FastDB(options);
 | Large Encrypted Compressed         | FastDB  |  68,064 | 14,892 KB |
 | Large Enc Cmp Parallel | FastDB  | 138,588 | 14,892 KB |
 
-### Message Contracts
+### Serialization Contracts
 
 To achieve the smallest possible storage footprint, Stellar.FastDB supports serialization contracts using MessagePack. By adding [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) attributes to your data models (as shown in the example below), you can instruct the serializer to package the data more efficiently. Note that this feature is disabled by default and is typically not included in most benchmarks.
 
