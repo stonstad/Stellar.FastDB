@@ -30,19 +30,48 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 
 A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a project for reproduction, is available.
 
-**Insert**
-| Method      | Product | Op/s    | FileSize |
-|------------ |-------- |--------:|---------:|
-| Insert 10,000 | FastDB  | 197,899 |   653 KB |
-| Insert 10,000 | LiteDB  |   1,300 |  1,656 KB |
-| Insert 10,000 | SQLite  |     754 |   444 KB |
-| Insert 10,000 | VistaDB |   2,649 |  1,244 KB |
+### Insert
+ Method      | Product | Op/s      | FileSize |
+------------ |-------- |----------:|---------:|
+ **Insert 10,000** | **FastDB**  | **192,855** | **653 KB** |
+ Insert 10,000 | VistaDB |   2,648 |   940 KB |
+ Insert 10,000 | LiteDB  |   1,251 | 1,656 KB |
+ Insert 10,000 | SQLite  |     753 |   444 KB |
+ 
+### Delete
+ Method      | Product | Op/s      | FileSize |
+------------ |-------- |----------:|---------:|
+ **Delete 10,000** | **FastDB**  | **164,177** | **653 KB** |
+ Delete 10,000 | VistaDB |   5,503 |   940 KB |
+ Delete 10,000 | LiteDB  |   1,207 | 1,664 KB |
+ Delete 10,000 | SQLite  |     757 |   444 KB |
+ 
 
-**Delete**
+### Upsert
+ Method      | Product | Op/s      | FileSize |
+------------ |-------- |----------:|---------:|
+ **Upsert10000** | **FastDB**  | **93,633** | **653 KB** |
+ Upsert 10,000 | LiteDB  |   3,192 | 1,664 KB |
+ Upsert 10,000 | VistaDB |   2,372 |   940 KB |
+ Upsert 10,000 | SQLite  |     741 |   444 KB |
+ 
+### Bulk Insert
+ Method    | Product | Op/s      | FileSize |
+---------- |-------- |----------:|---------:|
+ Bulk 10,000 | SQLite  | 294,455 |   444 KB |
+ **Bulk 10,000** | **FastDB**  | **226,075** |   **653 KB** |
+ Bulk 10,000 | LiteDB  |  44,219 |     8 KB |
+ Bulk 10,000 | VistaDB |   2,706 |   952 KB |
 
-**Upsert**
+** Query **
 
----
+ Method     | Product | Op/s         | FileSize |
+----------- |-------- |-------------:|---------:|
+ **Query 10,000** | **FastDB**  | **12,080,699** | **653 KB** |
+ Query 10,000 | SQLite  |  2,227,601 |   444 KB |
+ Query 10,000 | VistaDB |    574,299 |   940 KB |
+ Query 10,000 | LiteDB  |    497,798 | 1,656 KB |
+ ---
 
 ## Common Questions
 
