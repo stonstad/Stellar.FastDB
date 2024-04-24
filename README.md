@@ -230,5 +230,5 @@ fastDB.Close();
 
 | Serializer | Product | Op/s      | FileSize |
 |--------- |-------- |----------:|---------:|
-| Default  | FastDB  | 198,628 |   653 KB |
-| Contract | FastDB  | 201,109 |   370 KB |
+| Default 10,000  | FastDB  | 198,628 |   653 KB |
+| Contract 10,000 | FastDB  | 201,109 |   370 KB |
