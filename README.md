@@ -3,7 +3,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 
 ---
 
-<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/765a4f19-8242-41d8-ae83-52eb26238e19">
+<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/912f028e-0693-4717-a426-0ee0ce265ae1">
 
 ---
 
