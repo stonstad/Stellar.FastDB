@@ -202,5 +202,5 @@ fastDB.Close();
 
 | Serializer | Product | Op/s      | FileSize |
 |--------- |-------- |----------:|---------:|
-| JSON     | FastDB  | 198,628 |   653 KB |
+| Default  | FastDB  | 198,628 |   653 KB |
 | Contract | FastDB  | 201,109 |   370 KB |
