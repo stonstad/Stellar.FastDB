@@ -92,15 +92,13 @@ Do not use this database if you need:
 - Sharing conections between processes.
 - Storing data in a single file.
 
-** What additional features are planned for Stellar.FastDB?
-
+**What additional features are planned for Stellar.FastDB?**
 - Integrated backup and restore functionality into a single file.
 - A memory defragmentation algorithm to further optimize performance.
 - An optional structured storage format with defined schema to further improve storage efficiency.
 - Support for .NET Standard 2.1 and Unity.
 
 ## How to use Stellar.FastDB
-
 - Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the traansiiton to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
 - To get started with Stellar.FastDB, install it from NuGet. Search for 'Stellar.FastDB' or use the package manager command 'Install-Package Stellar.FastDB'.
   
