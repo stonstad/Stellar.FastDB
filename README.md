@@ -138,7 +138,7 @@ var customer = new Customer
 customers.Add(customer.Id, customer);
 
 // update customer
-customer.Name = "Joana Doe";
+customer.Name = "John Wick's Dog";
 customers.Update(customer);
 
 // use LINQ to query documents
