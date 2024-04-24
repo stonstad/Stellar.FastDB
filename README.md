@@ -84,7 +84,7 @@ As a game developer, I needed a high-concurrency storage solution suitable for p
 
 Use Stellar.FastDB if you need:
 - Embedded, durable storage suitable for applications like game servers and desktop apps.
-- Thread safety with robust supporst for high concurrency.
+- Thread safety with robust support for high concurrency.
 - High throughput for both reading and writing data.
 - A minimal data storage footprint.
 
