@@ -1,5 +1,5 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
-The extremely fast Stellar.FastDB document store for C# is ~100x faster than its peers. FastDB is designed for performance and high concurrency.
+Stellar.FastDB is an exceptionally fast document store for C# with speeds approximately 100 times faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
 ---
 
@@ -7,20 +7,21 @@ The extremely fast Stellar.FastDB document store for C# is ~100x faster than its
 
 ---
 
-**Stellar.FastDB features ...**
+**Key Features**
 
-- Serverless embedded document storage
-- Simple thread-safe API with support for asynchronous programming (async/await)
-- 100% C# code for .NET 5.0/6.0/7.0/8.0 delivered as a single DLL (60 kb)
-- Supports multiple readers and writers without external locking
-- Schema-less NoSQL storage with change resiliance
-- Optimized and configurable storage footprint ([MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp), JSON)
-- LZH Compresion and AES Encryption
-- Parallelized serialization, compression, and encryption
-- Relational querying through LINQ
-- End-to-end type safety
-- Support for composite keys
-- Open source and free to use, including commerical use.
+- Serverless, embedded document storage.
+- Simple, thread-safe API that supports asynchronous programming with async/await.
+- Entirely written in C#, supporting .NET versions 5.0 through 8.0.
+- Delivered as a compact, single DLL (60 kb).
+- Enables multiple readers and writers simultaneously without the need for external locking.
+- Schema-less NoSQL storage that adapts to changes.
+- Optimized storage footprint that can be confused to use different formats (JSON, MessagePack).
+- Advanced LZH compresion and AES encryption to ensure data security.
+- Parallel processing capabilties for serialization, compression, and encryption.
+- Supports reltional querying with LINQ.
+- Ensures end-to-end type safety for data integrity.
+- Accomodates composite keys for complex data structuring.
+- Open source and free for both personal and commercial use.
 - Install from Nuget. Install-Package Stellar.FastDB
 
 ---
