@@ -20,7 +20,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - Ensures end-to-end type safety for data integrity.
 - Accomodates composite keys for complex data structuring.
 - Open source and free for both personal and commercial use.
-- Install from Nuget. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
+- **Install from Nuget**. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
 
 ---
 
@@ -98,7 +98,7 @@ Do not use this database if you need:
 
 ## How to use Stellar.FastDB
 - Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the traansiiton to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
-- To get started with Stellar.FastDB, install it from NuGet. Search for ['Stellar.FastDB'](https://www.nuget.org/packages/Stellar.FastDB) or use the package manager command ['Install-Package Stellar.FastDB'](https://www.nuget.org/packages/Stellar.FastDB).
+- To get started with Stellar.FastDB, install it from NuGet. Search for 'Stellar.FastDB' or use the package manager command **['Install-Package Stellar.FastDB']**(https://www.nuget.org/packages/Stellar.FastDB).
   
 ## Code Samples
 
