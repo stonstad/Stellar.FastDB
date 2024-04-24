@@ -167,7 +167,7 @@ FastDBOptions options = new FastDBOptions()
 FastDB fastDB = new FastDB(options);
 ```
 
-### Parallel Data Transformation
+### Large Record Parallelism
 For operations involving serialization, compression, or encryption of large object graphs, enabling parallel data transformations can significantly enhance throughput, especially with large records. This method effectively leverages multiple processor cores to accelerate write operations.
 
 ```C#
@@ -190,7 +190,7 @@ FastDB fastDB = new FastDB(options);
 | Large Encrypted Compressed         | FastDB  |  68,064 | 14,892 KB |
 | Large Enc Cmp Parallel | FastDB  | 138,588 | 14,892 KB |
 
-### Serialization Contracts
+### Optional Serialization Contracts
 
 To achieve the smallest possible storage footprint, Stellar.FastDB supports serialization contracts using MessagePack. By adding [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) attributes to your data models (as shown in the example below), you can instruct the serializer to package the data more efficiently. Note that this feature is disabled by default and is typically not included in most benchmarks.
 
