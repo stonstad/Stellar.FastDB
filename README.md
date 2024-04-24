@@ -50,7 +50,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
 ### Upsert
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Upsert10000** | **FastDB**  | **93,633** | **653 KB** |
+ **Upsert 10,000** | **FastDB**  | **93,633** | **653 KB** |
  Upsert 10,000 | LiteDB  |   3,192 | 1,664 KB |
  Upsert 10,000 | VistaDB |   2,372 |   940 KB |
  Upsert 10,000 | SQLite  |     741 |   444 KB |
@@ -63,7 +63,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
  Bulk 10,000 | LiteDB  |  44,219 |     8 KB |
  Bulk 10,000 | VistaDB |   2,706 |   952 KB |
 
-** Query **
+### Query
 
  Method     | Product | Op/s         | FileSize |
 ----------- |-------- |-------------:|---------:|
@@ -71,6 +71,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
  Query 10,000 | SQLite  |  2,227,601 |   444 KB |
  Query 10,000 | VistaDB |    574,299 |   940 KB |
  Query 10,000 | LiteDB  |    497,798 | 1,656 KB |
+ 
  ---
 
 ## Common Questions
