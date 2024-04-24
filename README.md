@@ -23,11 +23,31 @@ The extremely fast Stellar.FastDB document store for C# is ~100x faster than its
 - Open source and free to use, including commerical use.
 - Install from Nuget. Install-Package Stellar.FastDB
 
+---
+
+## Benchmarks
+
+A complete list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) are available along with a reproduction project.
+
+**Insert**
+| Method      | Product | Op/s    | FileSize |
+|------------ |-------- |--------:|---------:|
+| Insert 10,000 | FastDB  | 197,899 |   653 KB |
+| Insert 10,000 | LiteDB  |   1,300 |  1,656 KB |
+| Insert 10,000 | SQLite  |     754 |   444 KB |
+| Insert 10,000 | VistaDB |   2,649 |  1,244 KB |
+
+**Delete**
+
+**Upsert**
+
+---
+
 ## Common Questions
 
 **Why did you create Stellar.FasbDB?**
 
-I'm a game developer and I needed a high concurency storage solution for player-run game servers. Installing a local database would be asking too much of players. I discovered that existing storage solutions are slow and suffer from concurrency issues when there are too many readers and writers. This doesn't work for game servers which have large numbers of players reading and writing data.
+I'm a game developer and I needed a high concurency storage solution for player-managed game servers. Installing a local database would be asking too much of players. I discovered that existing storage solutions are slow or suffer from concurrency issues when there are too many concurrent readers and writers. This doesn't work for game servers which support large numbers of players.
 
 **Should I use Stellar.FastDB?**
 
@@ -41,22 +61,18 @@ Do not use this database if you need:
 - Interprocess connection sharing
 - Single file storage
 
-## Benchmarks
+** What additional features are on the roadmap? **
 
-A complete list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main) are available along with a reproduction project.
-
-| Method      | Product | Op/s    | FileSize |
-|------------ |-------- |--------:|---------:|
-| Insert 10,000 | FastDB  | 197,899 |   653 KB |
-| Insert 10,000 | LiteDB  |   1,300 |  1656 KB |
-| Insert 10,000 | SQLite  |     754 |   444 KB |
-| Insert 10,000 | VistaDB |   2,649 |  1244 KB |
-
----
+- Integrated backup and restore to a single file
+- Memory defragmentation algorithm
+- Optional structured storage mode with defined schmea for improved storage efficiency
+- .NET Standard 2.1 support
+- Unity support
 
 ## How to use Stellar.FastDB
 
-FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB! When using default settings, all FastDB writes are immediate and consistent.
+- FastDB's APIs are modelled after .NET collections. If you know how to use Dictionary you already know how to use FastDB! When using default settings, all FastDB writes are immediate and consistent.
+- Install Stellar.FastDB from Nuget by searching for Stellar.FastDB or running package manager command 'Install-Package Stellar.FastDB'. 
 
 ## Code Samples
 
@@ -138,16 +154,17 @@ FastDBOptions options = new FastDBOptions()
 FastDB fastDB = new FastDB(options);
 ```
 
+
 |  Method                           | Product | Op/s      | FileSize |
 |--------------------------------- |-------- |----------:|---------:|
-| Large                            | FastDB  | 140,470.9 | 20096 KB |
-| LargeEncrypted                   | FastDB  | 100,435.0 | 20205 KB |
-| LargeEncryptedCompressed         | FastDB  |  68,064.7 | 14892 KB |
-| LargeEncryptedCompressedParallel | FastDB  | 138,588.9 | 14892 KB |
+| Large                            | FastDB  | 140,470 | 20,096 KB |
+| Large Encrypted                   | FastDB  | 100,435 | 20,205 KB |
+| Large Encrypted Compressed         | FastDB  |  68,064 | 14,892 KB |
+| Large Enc Cmp Parallel | FastDB  | 138,588 | 14,892 KB |
 
 ### Message Contracts
 
-If you would like the smallest storage footprint possible, serialization contracts using built-in [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) integration is supported. 
+If you would like smallest storage footprint possible, serialization contracts using [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) are supported. Adding MessagePack attributes (see example below) instruct the serializer how to better package the data. This option is disabled by default and is not included in most benchmarks.
 
 ```C#
 // create a class
@@ -185,5 +202,5 @@ fastDB.Close();
 
 | Serializer | Product | Op/s      | FileSize |
 |--------- |-------- |----------:|---------:|
-| JSON     | FastDB  | 198,628.3 |   653 KB |
-| Contract | FastDB  | 201,109.0 |   370 KB |
+| JSON     | FastDB  | 198,628 |   653 KB |
+| Contract | FastDB  | 201,109 |   370 KB |
