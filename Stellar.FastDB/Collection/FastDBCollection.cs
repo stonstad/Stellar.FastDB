@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Stellar.Collections
 {
-    /// <summary>Represents a thread-safe collection of keys and values.</summary>
+    /// <summary>Represents a thread-safe collection of keys and values persisted to the file system.</summary>
     /// <typeparam name="TKey">The type of the keys in the collection.</typeparam>
     /// <typeparam name="TValue">The type of the values in the collection.</typeparam>
     /// <remarks>

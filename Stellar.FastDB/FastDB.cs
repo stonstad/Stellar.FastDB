@@ -6,7 +6,13 @@ namespace Stellar.Collections
 {
     public sealed class FastDB : IAsyncDisposable
     {
+        /// <summary>
+        /// Gets the name of this FastDB database.
+        /// </summary>
         public string Name { get; private set; } = "FastDB";
+        /// <summary>
+        /// Specifies if this database is closed.
+        /// </summary>
         public bool IsClosed { get; private set; }
 
         private ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
@@ -14,18 +20,34 @@ namespace Stellar.Collections
 
         private readonly object _CollectionLock = new object();
 
+        /// <summary>
+        /// Creates a new instance of Stellar.FastDB using default options.
+        /// </summary>
         public FastDB() : this(new FastDBOptions())
         {
         }
 
+        /// <summary>
+        /// Creates a new instance of Stellar.FastDB using default options and a database name.
+        /// </summary>
+        /// <param name="databaseName">The name of the database and directory with which to store all files.</param>
         public FastDB(string databaseName) : this(new FastDBOptions() { DatabaseName = databaseName })
         {
         }
 
+        /// <summary>
+        /// Creates a new instance of Stellar.FastDB using specified options and a database name.
+        /// </summary>
+        /// <param name="databaseName">The name of the datasbase and directory with which to store all files.</param>
+        /// <param name="options">Options with which to initialize the database.</param>
         public FastDB(string databaseName, FastDBOptions options) : this(new FastDBOptions(options) { DatabaseName = databaseName })
         {
         }
 
+        /// <summary>
+        /// Creates a new instance of Stellar.FastDB using specified options.
+        /// </summary>
+        /// <param name="options"></param>
         public FastDB(FastDBOptions options)
         {
             Options = options;
@@ -45,6 +67,14 @@ namespace Stellar.Collections
         }
 
 
+        /// <summary>
+        /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
+        /// </summary>
+        /// <typeparam name="K"></typeparam>
+        /// <typeparam name="V"></typeparam>
+        /// <param name="collectionName"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public IFastDBCollection<K, V> GetCollection<K, V>(string collectionName = null, FastDBOptions options = null) where K : struct
         {
             if (IsClosed)
@@ -75,6 +105,14 @@ namespace Stellar.Collections
             }
         }
 
+        /// <summary>
+        /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
+        /// </summary>
+        /// <typeparam name="K"></typeparam>
+        /// <typeparam name="V"></typeparam>
+        /// <param name="collectionName"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
         public async Task<IFastDBCollection<K, V>> GetCollectionAsync<K, V>(string collectionName = null, FastDBOptions options = null) where K : struct
         {
             if (IsClosed)
@@ -102,6 +140,10 @@ namespace Stellar.Collections
             }
         }
 
+        /// <summary>
+        /// Returns a count of all records associated with all open database collections.
+        /// </summary>
+        /// <returns></returns>
         public int Count()
         {
             if (IsClosed)
@@ -113,6 +155,9 @@ namespace Stellar.Collections
             return count;
         }
 
+        /// <summary>
+        /// Clears records contained within all open database collections.
+        /// </summary>
         public void Clear()
         {
             if (IsClosed)
@@ -124,6 +169,9 @@ namespace Stellar.Collections
                 collection.Value.Clear();
         }
 
+        /// <summary>
+        /// Performs a blocking flush operation to wait for file system writes to complete.
+        /// </summary>
         public void Flush()
         {
             if (IsClosed)
@@ -133,6 +181,9 @@ namespace Stellar.Collections
                 collection.Value.Flush();
         }
 
+        /// <summary>
+        /// Performs an asynchronous blocking flush operation to wait for file system writes to complete.
+        /// </summary>
         public async Task FlushAsync()
         {
             if (IsClosed)
@@ -142,6 +193,9 @@ namespace Stellar.Collections
                 await collection.Value.FlushAsync();
         }
 
+        /// <summary>
+        /// Performs a blocking flush and closes all open database collections.
+        /// </summary>
         public void Close()
         {
             if (!IsClosed)
@@ -152,6 +206,10 @@ namespace Stellar.Collections
                 _Collections.Clear();
             }
         }
+
+        /// <summary>
+        /// Performs an asynchronous blocking flush and closes all open database collections.
+        /// </summary>
 
         public async Task CloseAsync()
         {
@@ -164,6 +222,9 @@ namespace Stellar.Collections
             }
         }
 
+        /// <summary>
+        /// Deletes all open database collections.
+        /// </summary>
         public void Delete()
         {
             if (IsClosed)
@@ -174,6 +235,9 @@ namespace Stellar.Collections
                 collection.Value.Delete();
         }
 
+        /// <summary>
+        /// Deletes all open database collections.
+        /// </summary>
         public async Task DeleteAsync()
         {
             if (IsClosed)
@@ -193,6 +257,10 @@ namespace Stellar.Collections
                 await collection.Value.DefragmentMemoryAsync();
         }
 
+        /// <summary>
+        /// Returns the file size in bytes of all open database collections.
+        /// </summary>
+        /// <returns></returns>
         public long GetFileSizeBytes()
         {
             if (IsClosed)
@@ -204,6 +272,9 @@ namespace Stellar.Collections
             return sizeBytes;
         }
 
+        /// <summary>
+        /// Performs a blocking flush and closes all open database collections.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             if (!IsClosed)
