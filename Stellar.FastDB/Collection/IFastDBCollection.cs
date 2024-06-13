@@ -191,5 +191,10 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <returns></returns>
         bool ContainsKey(TKey key);
+
+        /// <summary>
+        /// Returns a KeyValuePair<TKey, TValue> enumerator.
+        /// </summary>
+        IEnumerator<KeyValuePair<TKey, TValue>> GetDictionaryEnumerator();
     }
 }
