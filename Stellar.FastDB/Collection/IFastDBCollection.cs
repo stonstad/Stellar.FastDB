@@ -195,6 +195,6 @@ namespace Stellar.Collections
         /// <summary>
         /// Returns a KeyValuePair<TKey, TValue> enumerator.
         /// </summary>
-        IEnumerator<KeyValuePair<TKey, TValue>> GetDictionaryEnumerator();
+        IEnumerable<KeyValuePair<TKey, TValue>> AsEnumerable();
     }
 }

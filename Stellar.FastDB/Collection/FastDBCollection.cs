@@ -435,12 +435,12 @@ namespace Stellar.Collections
             return GetEnumerator();
         }
 
-        public IEnumerator<KeyValuePair<TKey, TValue>> GetDictionaryEnumerator()
+        public IEnumerable<KeyValuePair<TKey, TValue>> AsEnumerable()
         {
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
 
-            return _Values.GetEnumerator();
+            return _Values;
         }
 
         public async Task DefragmentMemoryAsync()
