@@ -1,11 +1,9 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
 Stellar.FastDB is an exceptionally fast document store for C# with speeds approximately 100 times faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
----
+![image](https://github.com/stonstad/Stellar.FastDB/assets/3117255/bc19fbd9-ed8a-4d9d-a873-189e0b05097a)
 
-<img width="863" alt="image" src="https://github.com/stonstad/Stellar.FastDB/assets/3117255/912f028e-0693-4717-a426-0ee0ce265ae1">
 
----
 
 **Key Features**
 
@@ -15,14 +13,14 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - Delivered as a compact, single DLL (60 kb).
 - Enables multiple readers and writers simultaneously without the need for external locking.
 - Schema-less NoSQL storage that adapts to changes.
-- Optimized storage footprint that can be confused to use different formats (JSON, MessagePack).
+- Optimized storage footprint that can be configured to use different formats (JSON, MessagePack).
 - Advanced LZH compresion and AES encryption to ensure data security.
 - Parallel processing capabilties for serialization, compression, and encryption.
 - Supports reltional querying with LINQ.
 - Ensures end-to-end type safety for data integrity.
 - Accomodates composite keys for complex data structuring.
 - Open source and free for both personal and commercial use.
-- Install from Nuget. Install-Package Stellar.FastDB.
+- **Install from Nuget**. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
 
 ---
 
@@ -100,7 +98,7 @@ Do not use this database if you need:
 
 ## How to use Stellar.FastDB
 - Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the traansiiton to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
-- To get started with Stellar.FastDB, install it from NuGet. Search for 'Stellar.FastDB' or use the package manager command 'Install-Package Stellar.FastDB'.
+- To get started with Stellar.FastDB, install it from NuGet. Search for '**Stellar.FastDB**' or use the package manager command ['Install-Package Stellar.FastDB'](https://www.nuget.org/packages/Stellar.FastDB).
   
 ## Code Samples
 
