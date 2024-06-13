@@ -146,13 +146,29 @@ namespace Stellar.Collections
         bool Remove(TKey key, out TValue value);
         
         /// <summary>
+        /// Removes one or more elements from the collection.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        Task RemoveBulkAsync(IEnumerable<TKey> keys);
+
+        /// <summary>
+        /// Removes one or more elements from the collection.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        void RemoveBulk(IEnumerable<TKey> keys);
+
+        /// <summary>
         /// Removes an element from the collection.
         /// </summary>
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
         Task<bool> RemoveAsync(TKey key);
-        
+
         /// <summary>
         /// Attempts to retrieve an element from the collection. If not present, false is returned.
         /// </summary>

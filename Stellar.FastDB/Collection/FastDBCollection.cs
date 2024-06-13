@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -372,6 +373,18 @@ namespace Stellar.Collections
                 throw new KeyNotFoundException();
             else
                 return false;
+        }
+
+        public void RemoveBulk(IEnumerable<TKey> keys)
+        {
+            foreach (TKey key in keys)
+                Remove(key, out _);
+        }
+
+        public async Task RemoveBulkAsync(IEnumerable<TKey> keys)
+        {
+            RemoveBulk(keys);
+            await Task.CompletedTask;
         }
 
         public bool TryGet(TKey key, out TValue value)

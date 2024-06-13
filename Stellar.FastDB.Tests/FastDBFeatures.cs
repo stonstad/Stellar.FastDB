@@ -74,8 +74,23 @@ namespace Stellar.Collections.Tests
             // bulk
             stopwatch.Restart();
             await customers.AddBulkAsync(testData.ToDictionary(a => a.Id, a => a));
+            await customers.FlushAsync();
             stopwatch.Stop();
             TestOutput.WriteThroughputResult("AddBulk", testData.Count, stopwatch);
+
+            // remove bulk
+            stopwatch.Restart();
+            await customers.RemoveBulkAsync(testData.Select(a => a.Id));
+            await customers.FlushAsync();
+            stopwatch.Stop();
+            TestOutput.WriteThroughputResult("RemoveBulk", testData.Count, stopwatch);
+
+            // add
+            stopwatch.Restart();
+            foreach (Customer customer in testData)
+                customers.Add(customer.Id, customer);
+            stopwatch.Stop();
+            TestOutput.WriteThroughputResult("Add", testData.Count, stopwatch);
 
             // remove
             stopwatch.Restart();
@@ -85,11 +100,8 @@ namespace Stellar.Collections.Tests
             TestOutput.WriteThroughputResult("Remove", testData.Count, stopwatch);
 
             // add
-            stopwatch.Restart();
             foreach (Customer customer in testData)
                 customers.Add(customer.Id, customer);
-            stopwatch.Stop();
-            TestOutput.WriteThroughputResult("Add", testData.Count, stopwatch);
 
             // upsert
             stopwatch.Restart();
@@ -165,7 +177,7 @@ namespace Stellar.Collections.Tests
             FastDB.Delete();
 
             Console.WriteLine();
-            
+
             await Task.CompletedTask;
         }
 

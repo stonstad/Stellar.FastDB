@@ -226,7 +226,7 @@ namespace Stellar.Collections
 
         public async Task<bool> UpdateAsync(TKey key, TValue value)
         {
-            return await Task.Run(() => Update(key, value));
+            return await Task.Run(() => UpdateInternal(key, value));
         }
 
         public async Task DefragmentMemory()
