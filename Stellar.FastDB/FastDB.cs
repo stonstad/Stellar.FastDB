@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Stellar.Collections
@@ -18,7 +19,7 @@ namespace Stellar.Collections
         private ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
         public FastDBOptions Options { get; private set; }
 
-        private readonly object _CollectionLock = new object();
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _CollectionLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
 
         /// <summary>
         /// Creates a new instance of Stellar.FastDB using default options.
@@ -66,40 +67,55 @@ namespace Stellar.Collections
             }
         }
 
-
         /// <summary>
         /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
         /// </summary>
-        /// <typeparam name="K"></typeparam>
-        /// <typeparam name="V"></typeparam>
+        /// <typeparam name="TKey"></typeparam>
+        /// <typeparam name="TValue"></typeparam>
         /// <param name="collectionName"></param>
         /// <param name="options"></param>
         /// <returns></returns>
-        public IFastDBCollection<K, V> GetCollection<K, V>(string collectionName = null, FastDBOptions options = null) where K : struct
+        public IFastDBCollection<TKey, TValue> GetCollection<TKey, TValue>(string collectionName = null, FastDBOptions options = null) where TKey : struct
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            if (collectionName == null)
-                collectionName = typeof(V).Name;
+            if (string.IsNullOrEmpty(collectionName))
+            {
+                collectionName = typeof(TValue).Name;
+                if (Options.GeneratedFileNameCreationFunction != null)
+                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
+            }
 
             if (options == null)
                 options = Options;
 
             if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
-                return collection as IFastDBCollection<K, V>;
+                return collection as IFastDBCollection<TKey, TValue>;
             else
             {
-                lock (_CollectionLock)
+                if (_Collections.TryGetValue(collectionName, out collection))
+                    return collection as IFastDBCollection<TKey, TValue>;
+                else
                 {
-                    if (_Collections.TryGetValue(collectionName, out collection))
-                        return collection as IFastDBCollection<K, V>;
-                    else
+                    var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
+                    semaphore.Wait();
+
+                    try
                     {
-                        IFastDBCollection<K, V> newCollection = new FastDBCollection<K, V>(collectionName, options);
+                        if (_Collections.TryGetValue(collectionName, out collection))
+                            return collection as IFastDBCollection<TKey, TValue>;
+
+                        IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
                         newCollection.Load();
                         _Collections[collectionName] = newCollection;
+                        _CollectionLocks.TryRemove(collectionName, out _);
+
                         return newCollection;
+                    }
+                    finally
+                    {
+                        semaphore.Release();
                     }
                 }
             }
@@ -108,34 +124,51 @@ namespace Stellar.Collections
         /// <summary>
         /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
         /// </summary>
-        /// <typeparam name="K"></typeparam>
-        /// <typeparam name="V"></typeparam>
+        /// <typeparam name="TKey"></typeparam>
+        /// <typeparam name="TValue"></typeparam>
         /// <param name="collectionName"></param>
         /// <param name="options"></param>
         /// <returns></returns>
-        public async Task<IFastDBCollection<K, V>> GetCollectionAsync<K, V>(string collectionName = null, FastDBOptions options = null) where K : struct
+        public async Task<IFastDBCollection<TKey, TValue>> GetCollectionAsync<TKey, TValue>(string collectionName = null, FastDBOptions options = null) where TKey : struct
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            if (collectionName == null)
-                collectionName = typeof(V).Name;
+            if (string.IsNullOrEmpty(collectionName))
+            {
+                collectionName = typeof(TValue).Name;
+                if (Options.GeneratedFileNameCreationFunction != null)
+                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
+            }
 
             if (options == null)
                 options = Options;
 
             if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
-                return collection as IFastDBCollection<K, V>;
+                return collection as IFastDBCollection<TKey, TValue>;
             else
             {
                 if (_Collections.TryGetValue(collectionName, out collection))
-                    return collection as IFastDBCollection<K, V>;
+                    return collection as IFastDBCollection<TKey, TValue>;
                 else
                 {
-                    IFastDBCollection<K, V> newCollection = new FastDBCollection<K, V>(collectionName, options);
-                    await newCollection.LoadAsync();
-                    _Collections[collectionName] = newCollection;
-                    return newCollection;
+                    var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
+                    await semaphore.WaitAsync();
+
+                    try
+                    {
+                        if (_Collections.TryGetValue(collectionName, out collection))
+                            return collection as IFastDBCollection<TKey, TValue>;
+
+                        IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                        await newCollection.LoadAsync();
+                        _Collections[collectionName] = newCollection;
+                        return newCollection;
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
                 }
             }
         }

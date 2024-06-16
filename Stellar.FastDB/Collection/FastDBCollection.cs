@@ -33,7 +33,11 @@ namespace Stellar.Collections
             Options = options;
 
             if (string.IsNullOrEmpty(name))
+            {
                 Name = typeof(TValue).Name;
+                if (Options.GeneratedFileNameCreationFunction != null)
+                    Name = Options.GeneratedFileNameCreationFunction(Name);
+            }
         }
 
         public void Load()
@@ -49,6 +53,7 @@ namespace Stellar.Collections
                     Directory.CreateDirectory(Options.DirectoryPath);
 
                 string filePath = Path.Combine(Options.DirectoryPath, $"{Name}.{Options.FileExtension}");
+
                 _FastDBStream = new FastDBStream<TKey, TValue>(filePath, Options);
                 _FastDBStream.Load(_Values);
             }

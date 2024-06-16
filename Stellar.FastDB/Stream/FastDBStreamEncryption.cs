@@ -14,6 +14,8 @@ namespace Stellar.Collections
         private MemoryStream _DecryptionStream = new MemoryStream(); // not thread safe
         private byte[] _EncryptionSalt;
         private byte[] _EncryptionChecksum;
+        private object _SinglethreadedEncryptionLock = new object();
+        private object _SingleThreadedDecryptionLock = new object();
 
         public byte[] GenerateEncryptionSalt()
         {
@@ -59,15 +61,18 @@ namespace Stellar.Collections
             }
             else
             {
-                _EncryptionStream.SetLength(0);
-                using (CryptoStream cryptoStream = new CryptoStream(_EncryptionStream, _AesEncryptor, CryptoStreamMode.Write, leaveOpen: true))
+                lock (_SinglethreadedEncryptionLock)
                 {
-                    cryptoStream.Write(dataToEncrypt);
-                    cryptoStream.FlushFinalBlock();
+                    _EncryptionStream.SetLength(0);
+                    using (CryptoStream cryptoStream = new CryptoStream(_EncryptionStream, _AesEncryptor, CryptoStreamMode.Write, leaveOpen: true))
+                    {
+                        cryptoStream.Write(dataToEncrypt);
+                        cryptoStream.FlushFinalBlock();
 
-                    byte[] result = _EncryptionStream.ToArray();
-                    Debug.Assert(result != null && result.Length > 0);
-                    return result;
+                        byte[] result = _EncryptionStream.ToArray();
+                        Debug.Assert(result != null && result.Length > 0);
+                        return result;
+                    }
                 }
             }
         }
@@ -97,17 +102,20 @@ namespace Stellar.Collections
             }
             else
             {
-                _DecryptionStream.SetLength(0);
-                _DecryptionStream.Write(dataToDecrypt, 0, dataToDecrypt.Length);
-                _DecryptionStream.Seek(0, SeekOrigin.Begin);
-
-                using (CryptoStream cryptoStream = new CryptoStream(_DecryptionStream, _AesDecryptor, CryptoStreamMode.Read, leaveOpen: true))
-                using (MemoryStream memoryStream = new MemoryStream())
+                lock (_SingleThreadedDecryptionLock)
                 {
-                    cryptoStream.CopyTo(memoryStream);
-                    byte[] result = memoryStream.ToArray();
-                    Debug.Assert(result != null && result.Length > 0);
-                    return result;
+                    _DecryptionStream.SetLength(0);
+                    _DecryptionStream.Write(dataToDecrypt, 0, dataToDecrypt.Length);
+                    _DecryptionStream.Seek(0, SeekOrigin.Begin);
+
+                    using (CryptoStream cryptoStream = new CryptoStream(_DecryptionStream, _AesDecryptor, CryptoStreamMode.Read, leaveOpen: true))
+                    using (MemoryStream memoryStream = new MemoryStream())
+                    {
+                        cryptoStream.CopyTo(memoryStream);
+                        byte[] result = memoryStream.ToArray();
+                        Debug.Assert(result != null && result.Length > 0);
+                        return result;
+                    }
                 }
             }
         }

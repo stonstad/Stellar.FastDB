@@ -193,6 +193,12 @@ namespace Stellar.Collections
         /// </summary>
         public ErrorBehaviorType DeserializationFailureBehavior { get; init; }
 
+        /// <summary>
+        /// Assigns an optional function to modify database file names which are generated from collection
+        /// class names.
+        /// </summary>
+        public Func<string, string> GeneratedFileNameCreationFunction { get; set; }
+
 
         /// <summary>
         /// Default constructor for Stellar.FastDB configuration options.

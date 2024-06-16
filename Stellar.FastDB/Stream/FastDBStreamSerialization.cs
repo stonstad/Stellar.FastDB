@@ -78,7 +78,6 @@ namespace Stellar.Collections
 
             if (Options.IsEncryptionEnabled)
             {
-                //byte[] buffer = new byte[bytesLength];
                 byte[] buffer = _BufferPool.Rent(bytesLength);
                 stream.Read(buffer);
 
@@ -107,7 +106,6 @@ namespace Stellar.Collections
             }
             else
             {
-                //byte[] buffer = new byte[bytesLength];
                 byte[] buffer = _BufferPool.Rent(bytesLength);
                 stream.Read(buffer);
 
