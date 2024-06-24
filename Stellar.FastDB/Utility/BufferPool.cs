@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace Stellar.Collections
 {
-    internal class BufferPool
+    internal sealed class BufferPool
     {
         private readonly ConcurrentDictionary<int, ConcurrentBag<byte[]>> _Pools = new ConcurrentDictionary<int, ConcurrentBag<byte[]>>();
         private int _Count;

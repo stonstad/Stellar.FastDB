@@ -94,29 +94,24 @@ namespace Stellar.Collections
                 return collection as IFastDBCollection<TKey, TValue>;
             else
             {
-                if (_Collections.TryGetValue(collectionName, out collection))
-                    return collection as IFastDBCollection<TKey, TValue>;
-                else
+                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
+                semaphore.Wait();
+
+                try
                 {
-                    var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
-                    semaphore.Wait();
+                    if (_Collections.TryGetValue(collectionName, out collection))
+                        return collection as IFastDBCollection<TKey, TValue>;
 
-                    try
-                    {
-                        if (_Collections.TryGetValue(collectionName, out collection))
-                            return collection as IFastDBCollection<TKey, TValue>;
+                    IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                    newCollection.Load();
+                    _Collections[collectionName] = newCollection;
+                    _CollectionLocks.TryRemove(collectionName, out _);
 
-                        IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
-                        newCollection.Load();
-                        _Collections[collectionName] = newCollection;
-                        _CollectionLocks.TryRemove(collectionName, out _);
-
-                        return newCollection;
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
+                    return newCollection;
+                }
+                finally
+                {
+                    semaphore.Release();
                 }
             }
         }
@@ -148,27 +143,22 @@ namespace Stellar.Collections
                 return collection as IFastDBCollection<TKey, TValue>;
             else
             {
-                if (_Collections.TryGetValue(collectionName, out collection))
-                    return collection as IFastDBCollection<TKey, TValue>;
-                else
+                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
+                await semaphore.WaitAsync();
+
+                try
                 {
-                    var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
-                    await semaphore.WaitAsync();
+                    if (_Collections.TryGetValue(collectionName, out collection))
+                        return collection as IFastDBCollection<TKey, TValue>;
 
-                    try
-                    {
-                        if (_Collections.TryGetValue(collectionName, out collection))
-                            return collection as IFastDBCollection<TKey, TValue>;
-
-                        IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
-                        await newCollection.LoadAsync();
-                        _Collections[collectionName] = newCollection;
-                        return newCollection;
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
+                    IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                    await newCollection.LoadAsync();
+                    _Collections[collectionName] = newCollection;
+                    return newCollection;
+                }
+                finally
+                {
+                    semaphore.Release();
                 }
             }
         }
