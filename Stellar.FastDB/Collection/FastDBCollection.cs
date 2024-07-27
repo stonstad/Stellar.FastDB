@@ -269,7 +269,7 @@ namespace Stellar.Collections
                 return true;
             }
             else
-                throw new ArgumentOutOfRangeException();
+                throw new Exception();
         }
 
         public bool Update(TKey key, TValue value)

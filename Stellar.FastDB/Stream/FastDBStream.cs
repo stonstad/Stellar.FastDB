@@ -2,9 +2,7 @@
 using MessagePack.Resolvers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -122,8 +120,7 @@ namespace Stellar.Collections
         {
             if (Options.IsEncryptionEnabled)
             {
-                if (_EncryptionSalt == null)
-                    _EncryptionSalt = GenerateEncryptionSalt();
+                _EncryptionSalt ??= GenerateEncryptionSalt();
                 InitializeAesEncryption(_EncryptionSalt);
                 _Format |= FormatType.Encrypted;
             }
@@ -319,23 +316,12 @@ namespace Stellar.Collections
             _BinaryReader.Dispose();
             _Stream.Dispose();
 
-            if (_Aes != null)
-                _Aes.Dispose();
-
-            if (_AesEncryptor != null)
-                _AesEncryptor.Dispose();
-
-            if (_AesDecryptor != null)
-                _AesDecryptor.Dispose();
-
-            if (_EncryptionStream != null)
-                _EncryptionStream.Dispose();
-
-            if (_DecryptionStream != null)
-                _DecryptionStream.Dispose();
-
-            if (_CancellationTokenSource != null)
-                _CancellationTokenSource.Dispose();
+            _Aes?.Dispose();
+            _AesEncryptor?.Dispose();
+            _AesDecryptor?.Dispose();
+            _EncryptionStream?.Dispose();
+            _DecryptionStream?.Dispose();
+            _CancellationTokenSource?.Dispose();
 
             _QueueEntryPool = null;
             _BufferPool = null;

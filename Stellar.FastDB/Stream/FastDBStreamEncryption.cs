@@ -14,8 +14,8 @@ namespace Stellar.Collections
         private MemoryStream _DecryptionStream = new MemoryStream(); // not thread safe
         private byte[] _EncryptionSalt;
         private byte[] _EncryptionChecksum;
-        private object _SinglethreadedEncryptionLock = new object();
-        private object _SingleThreadedDecryptionLock = new object();
+        private readonly object _SinglethreadedEncryptionLock = new object();
+        private readonly object _SingleThreadedDecryptionLock = new object();
 
         public byte[] GenerateEncryptionSalt()
         {

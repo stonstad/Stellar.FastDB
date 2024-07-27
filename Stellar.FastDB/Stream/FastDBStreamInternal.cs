@@ -61,7 +61,7 @@ namespace Stellar.Collections
                     LoadRecords_V1(collection);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new NotImplementedException(nameof(Version));
             }
         }
 
@@ -195,8 +195,7 @@ namespace Stellar.Collections
             // serialization
             try
             {
-                if (bytes == null)
-                    bytes = Serialize(key, value);
+                bytes ??= Serialize(key, value);
 
                 if (_Stream == null || _CancellationTokenSource.IsCancellationRequested)
                     return false;

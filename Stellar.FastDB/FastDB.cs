@@ -16,7 +16,7 @@ namespace Stellar.Collections
         /// </summary>
         public bool IsClosed { get; private set; }
 
-        private ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
+        private readonly ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
         public FastDBOptions Options { get; private set; }
 
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _CollectionLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
@@ -87,8 +87,7 @@ namespace Stellar.Collections
                     collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
             }
 
-            if (options == null)
-                options = Options;
+            options ??= Options;
 
             if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
                 return collection as IFastDBCollection<TKey, TValue>;
@@ -102,7 +101,7 @@ namespace Stellar.Collections
                     if (_Collections.TryGetValue(collectionName, out collection))
                         return collection as IFastDBCollection<TKey, TValue>;
 
-                    IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
                     newCollection.Load();
                     _Collections[collectionName] = newCollection;
                     _CollectionLocks.TryRemove(collectionName, out _);
@@ -136,8 +135,7 @@ namespace Stellar.Collections
                     collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
             }
 
-            if (options == null)
-                options = Options;
+            options ??= Options;
 
             if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
                 return collection as IFastDBCollection<TKey, TValue>;
@@ -151,7 +149,7 @@ namespace Stellar.Collections
                     if (_Collections.TryGetValue(collectionName, out collection))
                         return collection as IFastDBCollection<TKey, TValue>;
 
-                    IFastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
                     await newCollection.LoadAsync();
                     _Collections[collectionName] = newCollection;
                     return newCollection;

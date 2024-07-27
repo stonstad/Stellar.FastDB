@@ -17,7 +17,7 @@ namespace Stellar.Collections
         // serialization channel
         private Task _SerializationChannelTask = null;
         private Channel<QueueEntry> _SerializationChannel;
-        private ManualResetEventSlim _SerializationChannelEmpty = new ManualResetEventSlim(true);
+        private readonly ManualResetEventSlim _SerializationChannelEmpty = new ManualResetEventSlim(true);
 
         private void StartSerializationChannel()
         {
@@ -52,9 +52,9 @@ namespace Stellar.Collections
         // sequential processing channel
         private Task _SequentialProcessingTask;
         private ConcurrentDictionary<int, QueueEntry> _SequentialProcessingChannel;
-        private SemaphoreSlim _SequentialSemaphore = new SemaphoreSlim(1);
+        private readonly SemaphoreSlim _SequentialSemaphore = new SemaphoreSlim(1);
         private int _CurrentSequentialId = 1;
-        private ManualResetEventSlim _SequentialProcessingChannelEmpty = new ManualResetEventSlim(true);
+        private readonly ManualResetEventSlim _SequentialProcessingChannelEmpty = new ManualResetEventSlim(true);
         private void StartSequentialProcessingChannel()
         {
             ChannelWriter<QueueEntry> fileSystemChannelWriter = _FileSystemChannel.Writer;
@@ -84,7 +84,7 @@ namespace Stellar.Collections
         // file system channel
         private Task _FileSystemChannelTask = null;
         private Channel<QueueEntry> _FileSystemChannel;
-        private ManualResetEventSlim _FileSystemChannelEmpty = new ManualResetEventSlim(true);
+        private readonly ManualResetEventSlim _FileSystemChannelEmpty = new ManualResetEventSlim(true);
 
         private void StartFileSystemChannel()
         {
@@ -156,8 +156,7 @@ namespace Stellar.Collections
 
         private void CancelTasks()
         {
-            if (_CancellationTokenSource != null)
-                _CancellationTokenSource.Cancel(false);
+            _CancellationTokenSource?.Cancel(false);
         }
     }
 }
