@@ -97,7 +97,7 @@ Do not use this database if you need:
 - Support for .NET Standard 2.1 and Unity.
 
 ## How to use Stellar.FastDB
-- Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the traansiiton to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
+- Stellar.FastDB's APIs are designed to be inuitive and closely resemble .NET collections. If you are familar with using a Dictionary, you'l find the transition to FastDB seamless! By default, all writes to FastDB are immediate consistency, ensuring data integrity.
 - To get started with Stellar.FastDB, install it from NuGet. Search for '**Stellar.FastDB**' or use the package manager command ['Install-Package Stellar.FastDB'](https://www.nuget.org/packages/Stellar.FastDB).
   
 ## Code Samples
