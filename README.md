@@ -11,7 +11,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - Simple, thread-safe API that supports asynchronous programming with async/await.
 - Entirely written in C#, supporting .NET versions 5.0 through 8.0.
 - Delivered as a compact, single DLL (60 kb).
-- Enables multiple high-concurrency readers and writers.
+- Supports multiple concurrent readers and writers.
 - Schema-less NoSQL storage that adapts to changes.
 - Optimized storage footprint that can be configured to use different formats (JSON, MessagePack).
 - Advanced LZH compresion and AES encryption to ensure data security.
