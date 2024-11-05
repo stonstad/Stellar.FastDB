@@ -14,7 +14,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - Supports multiple concurrent readers and writers.
 - Schema-less NoSQL storage that adapts to changes.
 - Optimized storage footprint that can be configured to use different formats (JSON, MessagePack).
-- Advanced LZH compresion and AES encryption to ensure data security.
+- Advanced LZH compression and AES encryption to ensure data security.
 - Parallel processing capabilties for serialization, compression, and encryption.
 - Supports reltional querying with LINQ.
 - Ensures end-to-end type safety for data integrity.
