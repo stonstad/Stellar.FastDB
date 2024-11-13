@@ -17,7 +17,7 @@ namespace Stellar.Collections
         private readonly object _SinglethreadedEncryptionLock = new object();
         private readonly object _SingleThreadedDecryptionLock = new object();
 
-        public byte[] GenerateEncryptionSalt()
+        public static byte[] GenerateEncryptionSalt()
         {
             byte[] saltBytes = new byte[16];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create())

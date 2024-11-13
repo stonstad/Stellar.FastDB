@@ -144,7 +144,7 @@ namespace Stellar.Collections
 
                     _SerializationChannel = Channel.CreateUnbounded<QueueEntry>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = false });
                     _SerializationChannelEmpty.Set();
-                    
+
                     _SequentialProcessingChannel = new ConcurrentDictionary<int, QueueEntry>();
                     _SequentialProcessingChannelEmpty.Set();
 

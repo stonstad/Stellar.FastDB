@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace Stellar.Collections
 {
@@ -23,12 +22,12 @@ namespace Stellar.Collections
             }
         }
 
-        private enum BufferOperationType  : byte
-        { 
-            None, 
-            Add, 
-            Remove, 
-            Update 
+        private enum BufferOperationType : byte
+        {
+            None,
+            Add,
+            Remove,
+            Update
         }
 
         private enum MemoryStateType : byte
@@ -52,7 +51,7 @@ namespace Stellar.Collections
             public BufferOperationType Type;
             public TKey Key;
             public TValue Value;
-            public byte[] Bytes; 
+            public byte[] Bytes;
 
             public QueueEntry()
             {
@@ -85,4 +84,4 @@ namespace Stellar.Collections
             }
         }
     }
- }
+}

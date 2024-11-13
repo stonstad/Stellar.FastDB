@@ -15,40 +15,40 @@ namespace Stellar.Collections
         /// <summary>
         /// Loads all elements in the database collection.
         /// </summary>
-        
+
         void Load();
-        
+
         /// <summary>
         /// Loads all elements in the database collection.
         /// </summary>
         Task LoadAsync();
-        
+
         /// <summary>
         /// Removes all elements from the database collection.
         /// </summary>
         /// <summary>
         void Clear();
-        
+
         /// <summary>
         /// Performs a blocking flush operation to wait for file system writes to complete.
         /// </summary>
         void Flush();
-        
+
         /// <summary>
         /// Performs an asynchronous blocking flush operation to wait for file system writes to complete.
         /// </summary>
         Task FlushAsync();
-        
+
         /// <summary>
         /// Performs a blocking flush and closes all open database collections.
         /// </summary>
         void Close();
-        
+
         /// <summary>
         /// Performs an asynchronous blocking flush and closes all open database collections.
         /// </summary>
         Task CloseAsync();
-        
+
         /// <summary>
         /// Deletes the database collection.
         /// </summary>
@@ -97,14 +97,14 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         Task<bool> AddAsync(TKey key, TValue value);
-        
+
         /// <summary>
         /// Adds one or more elements to the collection.
         /// </summary>
         /// <param name="dictionary"></param>
         /// <returns></returns>
         Task<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary);
-        
+
         /// <summary>
         /// Updates an existing element in the collection.
         /// </summary>
@@ -112,7 +112,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         bool Update(TKey key, TValue value);
-        
+
         /// <summary>
         /// Updates an existing element in the collection.
         /// </summary>
@@ -120,7 +120,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         Task<bool> UpdateAsync(TKey key, TValue value);
-        
+
         /// <summary>
         /// Adds an element to the collection or updates an existing element, if present.
         /// </summary>
@@ -128,7 +128,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         bool AddOrUpdate(TKey key, TValue value);
-        
+
         /// <summary>
         /// Adds an element to the collection or updates an existing element, if present.
         /// </summary>
@@ -136,7 +136,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         Task<bool> AddOrUpdateAsync(TKey key, TValue value);
-        
+
         /// <summary>
         /// Removes an element from the collection.
         /// </summary>
@@ -144,7 +144,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         bool Remove(TKey key, out TValue value);
-        
+
         /// <summary>
         /// Removes one or more elements from the collection.
         /// </summary>
@@ -176,7 +176,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         bool TryGet(TKey key, out TValue value);
-        
+
         /// <summary>
         /// Retrieve an element from the collection using the specified id. If not present, an exception is thrown.
         /// </summary>
@@ -184,7 +184,7 @@ namespace Stellar.Collections
         /// <param name="value"></param>
         /// <returns></returns>
         TValue this[TKey key] { get; set; }
-        
+
         /// <summary>
         /// Returns whether a element exists in the collection using the specified key.
         /// </summary>
