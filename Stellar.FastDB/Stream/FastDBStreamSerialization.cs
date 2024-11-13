@@ -79,7 +79,7 @@ namespace Stellar.Collections
             if (Options.IsEncryptionEnabled)
             {
                 byte[] buffer = _BufferPool.Rent(bytesLength);
-                stream.Read(buffer);
+                _ = stream.Read(buffer);
 
                 using (MemoryStream intermediateStream = new MemoryStream(buffer))
                 {
@@ -107,7 +107,7 @@ namespace Stellar.Collections
             else
             {
                 byte[] buffer = _BufferPool.Rent(bytesLength);
-                stream.Read(buffer);
+                _ = stream.Read(buffer);
 
                 if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
                 {
