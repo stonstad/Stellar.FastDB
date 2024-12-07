@@ -3,8 +3,6 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 
 ![image](https://i.imgur.com/kFAwU2F.png)
 
-
-
 **Key Features**
 
 - Serverless, embedded document storage.
@@ -230,3 +228,8 @@ fastDB.Close();
 |--------- |-------- |----------:|---------:|
 | Default 10,000  | FastDB  | 198,628 |   653 KB |
 | Contract 10,000 | FastDB  | 201,109 |   370 KB |
+
+
+## Contact
+
+I may be contacted on the [Stellar Conquest Discord (stonstad)](https://discord.gg/uQsAeze) and [X (stonstad)](https://x.com/ShaunTonstad).
