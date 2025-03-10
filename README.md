@@ -1,9 +1,10 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
-Stellar.FastDB is an exceptionally fast document store for C# with speeds approximately 100 times faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
+Stellar.FastDB is an exceptionally fast document store for C# with speeds approximately 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
 ![image](https://i.imgur.com/kFAwU2F.png)
+*Throughput (Records Per Second - Higher is Better)* 
 
-
+****
 
 **Key Features**
 
@@ -76,7 +77,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
 
 **Why was Stellar.FasbDB created?**
 
-As a game developer, I needed a high-concurrency storage solution suitable for player-managed game servers. Installing traditional local databases posed too high a demand on players. I found that the available storage solutions were either too slow or struggled with concurrency issues during high volumes of simultaneous reads and writes. Such limitations are impractical for game servers, which must support a large number of players efficiently.
+As a game developer, I needed a high-concurrency storage for player-managed game servers. Installing a local databases is an unreasonable demand for players. I found that the available storage solutions were either too slow or struggled with concurrency during high volume of simultaneous reads and writes. Such limitations are impractical for game servers, which must support a large number of players efficiently.
 
 **Should I use Stellar.FastDB?**
 
@@ -230,3 +231,8 @@ fastDB.Close();
 |--------- |-------- |----------:|---------:|
 | Default 10,000  | FastDB  | 198,628 |   653 KB |
 | Contract 10,000 | FastDB  | 201,109 |   370 KB |
+
+
+## Contact
+
+I may be contacted on the [Stellar Conquest Discord (stonstad)](https://discord.gg/uQsAeze) and [X (stonstad)](https://x.com/ShaunTonstad).
