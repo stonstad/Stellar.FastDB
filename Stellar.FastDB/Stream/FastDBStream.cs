@@ -120,7 +120,8 @@ namespace Stellar.Collections
         {
             if (Options.IsEncryptionEnabled)
             {
-                _EncryptionSalt ??= GenerateEncryptionSalt();
+                if (_EncryptionSalt == null)
+                    _EncryptionSalt = GenerateEncryptionSalt();
                 InitializeAesEncryption(_EncryptionSalt);
                 _Format |= FormatType.Encrypted;
             }

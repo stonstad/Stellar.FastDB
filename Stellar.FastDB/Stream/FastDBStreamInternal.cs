@@ -195,7 +195,8 @@ namespace Stellar.Collections
             // serialization
             try
             {
-                bytes ??= Serialize(key, value);
+                if (bytes == null)
+                    bytes = Serialize(key, value);
 
                 if (_Stream == null || _CancellationTokenSource.IsCancellationRequested)
                     return false;

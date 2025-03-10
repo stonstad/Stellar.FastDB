@@ -11,3 +11,4 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage("Style", "IDE0290:Use primary constructor", Justification = "<Pending>", Scope = "module")]
 [assembly: SuppressMessage("Style", "IDE0300:Collection initialization can be simplified", Justification = "<Pending>", Scope = "module")]
 [assembly: SuppressMessage("Style", "IDE1006:Naming rule violation: Prefix '_' is not expected", Justification = "<Pending>", Scope = "module")]
+[assembly: SuppressMessage("Style", "IDE0074:Use compound assignment", Justification = "<Pending>", Scope = "module")]
