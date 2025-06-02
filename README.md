@@ -77,7 +77,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
 
 **Why was Stellar.FasbDB created?**
 
-As a game developer, I needed a high-concurrency storage for player-managed game servers. Installing a local databases is an unreasonable demand for players. I found that the available storage solutions were either too slow or struggled with concurrency during high volume of simultaneous reads and writes. Such limitations are impractical for game servers, which must support a large number of players efficiently.
+As a game developer, I need a high-concurrency storage solution for player-managed game servers. Requiring players to install local databases isn’t practical. However, most available storage options are either too slow or struggle with concurrent reads and writes. These limitations make them unsuitable for game servers, which require high volume reads and writes without performance issues.
 
 **Should I use Stellar.FastDB?**
 
