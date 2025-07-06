@@ -141,7 +141,7 @@ customers.Add(customer.Id, customer);
 customer.Name = "John Wick's Dog";
 customers.Update(customer);
 
-// use LINQ to query documents
+// use LINQ to query
 var matches = customers.Where(a => a.Name.StartsWith("John") && a.Telephone > 5555555);
 
 // close database
