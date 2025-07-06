@@ -24,6 +24,8 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - **Install from Nuget**. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
 
 ---
+## TL;DR
+It's essentially a ConcurrentDictionary with built-in persistence.
 
 ## Benchmarks
 
