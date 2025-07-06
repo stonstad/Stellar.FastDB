@@ -1,4 +1,5 @@
-﻿using System;
+﻿using AsyncKeyedLock;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
@@ -11,7 +12,7 @@ namespace Stellar.Collections
         private CancellationTokenSource _CancellationTokenSource;
 
         // limit parallelization
-        private SemaphoreSlim _LimitParallelizationSemaphore;
+        private AsyncNonKeyedLocker _LimitParallelizationSemaphore;
         private int _SequentialId = 0;
 
         // serialization channel
@@ -30,10 +31,11 @@ namespace Stellar.Collections
                         _SerializationChannelEmpty.Reset();
                         while (serializationChannelReader.TryRead(out QueueEntry entry))
                         {
-                            await _LimitParallelizationSemaphore.WaitAsync(_CancellationTokenSource.Token); // limit this path to N parallel tasks
-                            int squentialId = Interlocked.Increment(ref _SequentialId);
-                            _ = Task.Run(() =>
+                            _ = Task.Run(async () =>
                             {
+                                using var _ = await _LimitParallelizationSemaphore.LockAsync(_CancellationTokenSource.Token); // limit this path to N parallel tasks
+                                int squentialId = Interlocked.Increment(ref _SequentialId);
+
                                 if (entry.Type == BufferOperationType.Add || entry.Type == BufferOperationType.Update)
                                     entry.Bytes = Serialize(entry.Key, entry.Value);
 
@@ -41,7 +43,6 @@ namespace Stellar.Collections
                                     _SequentialSemaphore.Release();
                                 else
                                     throw new Exception();
-                                _LimitParallelizationSemaphore.Release();
                             });
                         }
                         _SerializationChannelEmpty.Set();
@@ -140,7 +141,7 @@ namespace Stellar.Collections
                     _SequentialId = 0;
                     _CurrentSequentialId = 1;
 
-                    _LimitParallelizationSemaphore = new SemaphoreSlim(Options.MaxDegreeOfParallelism, Options.MaxDegreeOfParallelism);
+                    _LimitParallelizationSemaphore = new(Options.MaxDegreeOfParallelism);
 
                     _SerializationChannel = Channel.CreateUnbounded<QueueEntry>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = false });
                     _SerializationChannelEmpty.Set();
