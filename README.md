@@ -168,7 +168,7 @@ FastDB fastDB = new FastDB(options);
 ```
 
 ### Large Record Parallelism
-For operations involving serialization, compression, or encryption of large object graphs, enabling parallel data transformations can significantly enhance throughput, especially with large records. This method effectively leverages multiple processor cores to accelerate write operations.
+For operations involving serialization, compression, or encryption of large records, enabling parallel data transformations can significantly enhance throughput. This method uses multiple processor cores to accelerate write operations.
 
 ```C#
 FastDBOptions options = new FastDBOptions()
