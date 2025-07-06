@@ -126,7 +126,8 @@ var customers = fastDB.GetCollection<int, Customer>();
 
 // create your new customer instance
 var customer = new Customer
-{ 
+{
+   Id = 1,
    Name = "John Wick", 
    Phone = "555-555-5555"
    DOB = new DateTime(2000, 1, 1)
