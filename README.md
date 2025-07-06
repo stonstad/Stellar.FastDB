@@ -27,7 +27,7 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 
 ## Benchmarks
 
-A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a project for reproduction, is available.
+A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a reproducible project, is available.
 
 ### Insert
  Method      | Product | Op/s      | FileSize |
