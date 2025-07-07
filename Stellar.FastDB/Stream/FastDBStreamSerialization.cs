@@ -23,7 +23,7 @@ namespace Stellar.Collections
             if (Options.IsEncryptionEnabled)
                 contentBytes = Encrypt(contentBytes);
 
-            Debug.Assert(contentBytes != null && contentBytes.Length > 0);
+            Debug.Assert(contentBytes != null && contentBytes.Length > 0, $"Failure serializing type ({nameof(TKey)},{nameof(TValue)})");
 
             return contentBytes;
         }
