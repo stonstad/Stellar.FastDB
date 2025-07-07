@@ -104,7 +104,6 @@ namespace Stellar.Collections
                     FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
                     newCollection.Load();
                     _Collections[collectionName] = newCollection;
-                    _CollectionLocks.TryRemove(collectionName, out _);
 
                     return newCollection;
                 }
@@ -225,6 +224,7 @@ namespace Stellar.Collections
                 foreach (var collection in _Collections)
                     collection.Value.Close();
                 _Collections.Clear();
+                _CollectionLocks.Clear();
             }
         }
 
@@ -240,6 +240,7 @@ namespace Stellar.Collections
                 foreach (var collection in _Collections)
                     await collection.Value.CloseAsync();
                 _Collections.Clear();
+                _CollectionLocks.Clear();
             }
         }
 
