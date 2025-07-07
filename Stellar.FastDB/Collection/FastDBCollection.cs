@@ -285,7 +285,7 @@ namespace Stellar.Collections
                     return _FastDBStream.Update(key, value);
                 return true;
             }
-            else if (Options.KeyNotFoundBehavior == ErrorBehaviorType.Exception)
+            else if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                 throw ThrowHelper.KeyNotFound(key);
             else
                 return false;
@@ -305,7 +305,7 @@ namespace Stellar.Collections
                     return await _FastDBStream.UpdateAsync(key, value);
                 return true;
             }
-            else if (Options.KeyNotFoundBehavior == ErrorBehaviorType.Exception)
+            else if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                 throw new KeyNotFoundException();
             else
                 return false;
@@ -351,7 +351,7 @@ namespace Stellar.Collections
                     _FastDBStream.Remove(key);
                 return true;
             }
-            else if (Options.KeyNotFoundBehavior == ErrorBehaviorType.Exception)
+            else if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                 throw new KeyNotFoundException();
             else
             {
@@ -373,7 +373,7 @@ namespace Stellar.Collections
                     await _FastDBStream.RemoveAsync(key);
                 return true;
             }
-            else if (Options.KeyNotFoundBehavior == ErrorBehaviorType.Exception)
+            else if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                 throw new KeyNotFoundException();
             else
                 return false;
@@ -406,6 +406,7 @@ namespace Stellar.Collections
                 if (IsClosed)
                     throw ThrowHelper.CollectionClosed(Name);
                 return _Values[key];
+
             }
             set
             {

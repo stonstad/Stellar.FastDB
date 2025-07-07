@@ -176,8 +176,13 @@ namespace Stellar.Collections
         /// <summary>
         /// Specifies the desired behavior when a requested record is not found.
         /// </summary>
-        public ErrorBehaviorType KeyNotFoundBehavior { get; init; }
-        
+        public ErrorBehaviorType UpdateKeyNotFoundBehavior { get; init; }
+
+        /// <summary>
+        /// Specifies the desired behavior when a requested record is not found.
+        /// </summary>
+        public ErrorBehaviorType RemoveKeyNotFoundBehavior { get; init; }
+
         /// <summary>
         /// Specifies the desired behavior when a write operation fails.
         /// </summary>
@@ -225,7 +230,8 @@ namespace Stellar.Collections
             JsonSerializerOptions = copy.JsonSerializerOptions;
             AddDuplicateKeyBehavior = copy.AddDuplicateKeyBehavior;
             BulkAddDuplicateKeyBehavior = copy.BulkAddDuplicateKeyBehavior;
-            KeyNotFoundBehavior = copy.KeyNotFoundBehavior;
+            UpdateKeyNotFoundBehavior = copy.UpdateKeyNotFoundBehavior;
+            RemoveKeyNotFoundBehavior = copy.RemoveKeyNotFoundBehavior;
             StorageFailureBehavior = copy.StorageFailureBehavior;
             SerializationFailureBehavior = copy.SerializationFailureBehavior;
             DeserializationFailureBehavior = copy.DeserializationFailureBehavior;
