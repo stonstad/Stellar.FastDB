@@ -12,9 +12,9 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeContentInPack>true</IncludeContentInPack>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <Version>1.0.6</Version>
-    <AssemblyVersion>1.0.5</AssemblyVersion>
-    <FileVersion>1.0.5</FileVersion>
+    <Version>1.0.7</Version>
+    <AssemblyVersion>1.0.7</AssemblyVersion>
+    <FileVersion>1.0.7</FileVersion>
     </PropertyGroup>
 
   <ItemGroup>
