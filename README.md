@@ -24,10 +24,12 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds approx
 - **Install from Nuget**. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
 
 ---
+## TL;DR
+It's essentially a ConcurrentDictionary with built-in persistence.
 
 ## Benchmarks
 
-A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a project for reproduction, is available.
+A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/tree/main), along with a reproducible project, is available.
 
 ### Insert
  Method      | Product | Op/s      | FileSize |
@@ -77,7 +79,7 @@ A comprehensive list of [benchmarks](https://github.com/stonstad/Stellar.Benchma
 
 **Why was Stellar.FasbDB created?**
 
-As a game developer, I needed a high-concurrency storage for player-managed game servers. Installing a local databases is an unreasonable demand for players. I found that the available storage solutions were either too slow or struggled with concurrency during high volume of simultaneous reads and writes. Such limitations are impractical for game servers, which must support a large number of players efficiently.
+As a game developer, I need a high-concurrency storage solution for player-managed game servers. Requiring players to install local databases isn’t practical. However, most available storage options are either too slow or struggle with concurrent reads and writes. These limitations make them unsuitable for game servers, which require high volume reads and writes without performance issues.
 
 **Should I use Stellar.FastDB?**
 
@@ -126,7 +128,8 @@ var customers = fastDB.GetCollection<int, Customer>();
 
 // create your new customer instance
 var customer = new Customer
-{ 
+{
+   Id = 1,
    Name = "John Wick", 
    Phone = "555-555-5555"
    DOB = new DateTime(2000, 1, 1)
@@ -140,7 +143,7 @@ customers.Add(customer.Id, customer);
 customer.Name = "John Wick's Dog";
 customers.Update(customer);
 
-// use LINQ to query documents
+// use LINQ to query
 var matches = customers.Where(a => a.Name.StartsWith("John") && a.Telephone > 5555555);
 
 // close database
@@ -167,7 +170,7 @@ FastDB fastDB = new FastDB(options);
 ```
 
 ### Large Record Parallelism
-For operations involving serialization, compression, or encryption of large object graphs, enabling parallel data transformations can significantly enhance throughput, especially with large records. This method effectively leverages multiple processor cores to accelerate write operations.
+For operations involving serialization, compression, or encryption of large records, enabling parallel data transformations can significantly enhance throughput. This method uses multiple processor cores to accelerate write operations.
 
 ```C#
 FastDBOptions options = new FastDBOptions()
