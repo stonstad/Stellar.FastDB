@@ -112,7 +112,7 @@ namespace Stellar.Collections
             else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
             {
                 if (Options.JsonSerializerOptions == null)
-                    _JsonSerializerOptions = new JsonSerializerOptions();
+                    _JsonSerializerOptions = new JsonSerializerOptions() { IgnoreReadOnlyProperties = true };
             }
         }
 
