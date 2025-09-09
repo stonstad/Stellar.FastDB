@@ -93,6 +93,9 @@ namespace Stellar.Collections
             {
                 if (Options.MessagePackOptions == null)
                     _MessagePackOptions = ContractlessStandardResolver.Options;
+                else
+                    _MessagePackOptions = Options.MessagePackOptions;
+
                 if (Options.IsCompressionEnabled)
                 {
                     _MessagePackOptions = _MessagePackOptions.WithCompression(MessagePackCompression.Lz4BlockArray);
@@ -103,6 +106,9 @@ namespace Stellar.Collections
             {
                 if (Options.MessagePackOptions == null)
                     _MessagePackOptions = StandardResolver.Options;
+                else
+                    _MessagePackOptions = Options.MessagePackOptions;
+
                 if (Options.IsCompressionEnabled)
                 {
                     _MessagePackOptions = _MessagePackOptions.WithCompression(MessagePackCompression.Lz4BlockArray);

@@ -39,6 +39,10 @@ namespace Stellar.Collections
             }
         }
 
+        /// <summary>
+        /// Reopens a FastDB collection instance that was previously closed. 
+        /// This method should only be used if the collection has been explicitly closed earlier.
+        /// </summary>
         public void Load()
         {
             if (_IsLoaded)
@@ -46,6 +50,7 @@ namespace Stellar.Collections
             else
                 _IsLoaded = true;
 
+            IsClosed = false;
             if (_WriteToFileSystem)
             {
                 if (!Directory.Exists(Options.DirectoryPath))
@@ -107,6 +112,7 @@ namespace Stellar.Collections
                 _FastDBStream = null;
             }
             _Values = null;
+            _IsLoaded = false;
         }
 
         public async Task CloseAsync()
@@ -122,6 +128,7 @@ namespace Stellar.Collections
                 _FastDBStream = null;
             }
             _Values = null;
+            _IsLoaded = false;
         }
 
         public void Delete()

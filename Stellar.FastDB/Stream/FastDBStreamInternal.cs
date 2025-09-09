@@ -311,7 +311,6 @@ namespace Stellar.Collections
 
             lock (_StreamLock)
             {
-                Debug.Assert(_Allocated.ContainsKey(key));
                 if (_Allocated.TryGetValue(key, out Index index))
                 {
                     try

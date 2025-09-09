@@ -68,6 +68,16 @@ namespace Stellar.Collections
         }
 
         /// <summary>
+        /// Reopens a FastDB instance that was previously closed. 
+        /// This method should only be used if the database has been explicitly closed earlier.
+        /// </summary>
+        public void Load()
+        {
+            IsClosed = false;
+        }
+
+
+        /// <summary>
         /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
         /// </summary>
         /// <typeparam name="TKey"></typeparam>
