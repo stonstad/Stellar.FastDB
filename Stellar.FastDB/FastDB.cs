@@ -57,7 +57,7 @@ namespace Stellar.Collections
                 throw ThrowHelper.DatabaseNameMayNotBeNullOrEmpty();
 
             foreach (char c in Options.DatabaseName)
-                if (!(char.IsLetterOrDigit(c) || c == ' ' || c == '_'))
+                if (!(char.IsLetterOrDigit(c) || c == ' ' || c == '.' || c == '_' || c == '\'' || c == '!'))
                     throw ThrowHelper.DatabaseNameMayNotContainSpecialCharacters(Options.DatabaseName);
 
             if (Options.IsEncryptionEnabled)
