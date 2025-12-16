@@ -34,7 +34,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 ### Insert
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Insert 10,000** | **FastDB**  | **192,855** | **653 KB** |
+ **Insert 10,000** | <ins>FastDB</ins>  | **192,855** | **653 KB** |
  Insert 10,000 | VistaDB |   2,648 |   940 KB |
  Insert 10,000 | LiteDB  |   1,251 | 1,656 KB |
  Insert 10,000 | SQLite  |     753 |   444 KB |
@@ -42,7 +42,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 ### Delete
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Delete 10,000** | **FastDB**  | **164,177** | **653 KB** |
+ **Delete 10,000** | <ins>FastDB</ins>  | **164,177** | **653 KB** |
  Delete 10,000 | VistaDB |   5,503 |   940 KB |
  Delete 10,000 | LiteDB  |   1,207 | 1,664 KB |
  Delete 10,000 | SQLite  |     757 |   444 KB |
@@ -51,7 +51,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 ### Upsert
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Upsert 10,000** | **FastDB**  | **93,633** | **653 KB** |
+ **Upsert 10,000** | <ins>FastDB</ins>  | **93,633** | **653 KB** |
  Upsert 10,000 | LiteDB  |   3,192 | 1,664 KB |
  Upsert 10,000 | VistaDB |   2,372 |   940 KB |
  Upsert 10,000 | SQLite  |     741 |   444 KB |
@@ -60,7 +60,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
  Method    | Product | Op/s      | FileSize |
 ---------- |-------- |----------:|---------:|
  Bulk 10,000 | SQLite  | 294,455 |   444 KB |
- **Bulk 10,000** | **FastDB**  | **226,075** |   **653 KB** |
+ **Bulk 10,000** | <ins>FastDB</ins>  | **226,075** |   **653 KB** |
  Bulk 10,000 | LiteDB  |  44,219 |     8 KB |
  Bulk 10,000 | VistaDB |   2,706 |   952 KB |
 
@@ -68,7 +68,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 
  Method     | Product | Op/s         | FileSize |
 ----------- |-------- |-------------:|---------:|
- **Query 10,000** | **FastDB**  | **12,080,699** | **653 KB** |
+ **Query 10,000** | <ins>FastDB</ins>  | **12,080,699** | **653 KB** |
  Query 10,000 | SQLite  |  2,227,601 |   444 KB |
  Query 10,000 | VistaDB |    574,299 |   940 KB |
  Query 10,000 | LiteDB  |    497,798 | 1,656 KB |
@@ -187,9 +187,9 @@ FastDB fastDB = new FastDB(options);
 
 |  Method                           | Product | Op/s      | FileSize |
 |--------------------------------- |-------- |----------:|---------:|
-| Large                            | FastDB  | 140,470 | 20,096 KB |
-| Large Encrypted                   | FastDB  | 100,435 | 20,205 KB |
-| Large Encrypted Compressed         | FastDB  |  68,064 | 14,892 KB |
+| Large                            | <ins>FastDB</ins>  | 140,470 | 20,096 KB |
+| Large Encrypted                   | <ins>FastDB</ins>  | 100,435 | 20,205 KB |
+| Large Encrypted Compressed         | <ins>FastDB</ins>  |  68,064 | 14,892 KB |
 | Large Enc Cmp Parallel | FastDB  | 138,588 | 14,892 KB |
 
 ### Optional Serialization Contracts
@@ -232,8 +232,8 @@ fastDB.Close();
 
 | Serializer | Product | Op/s      | FileSize |
 |--------- |-------- |----------:|---------:|
-| Default 10,000  | FastDB  | 198,628 |   653 KB |
-| Contract 10,000 | FastDB  | 201,109 |   370 KB |
+| Default 10,000  | <ins>FastDB</ins>  | 198,628 |   653 KB |
+| Contract 10,000 | <ins>FastDB</ins>  | 201,109 |   370 KB |
 
 
 ## Contact
