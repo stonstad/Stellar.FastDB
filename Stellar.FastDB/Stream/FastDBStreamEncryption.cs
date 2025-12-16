@@ -31,8 +31,12 @@ namespace Stellar.Collections
 
             _EncryptionSalt = encryptionSalt;
             _Aes = Aes.Create();
+#if (NET10_0_OR_GREATER)
+            byte[] keyIVBytes =  Rfc2898DeriveBytes.Pbkdf2(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncyptionAlgorithm, (_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
+#else
             Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncyptionAlgorithm);
             byte[] keyIVBytes = pdb.GetBytes((_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
+#endif
             _Aes.Key = keyIVBytes.Take(_Aes.KeySize / 8).ToArray();
             _Aes.IV = keyIVBytes.Skip(_Aes.KeySize / 8).Take(_Aes.BlockSize / 8).ToArray();
 
