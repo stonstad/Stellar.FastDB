@@ -45,7 +45,7 @@ namespace Stellar.Collections
                 _EncryptionChecksum = Encrypt(new byte[] { _EncryptionSalt[0], _EncryptionSalt[1] });
                 _BinaryWriter.Write(_EncryptionSalt);       // 16 bytes
                 _BinaryWriter.Write(_EncryptionChecksum);   // 16 bytes
-             }
+            }
             else
                 _BinaryWriter.Write(new byte[32]);          // 32 bytes
 
@@ -69,73 +69,10 @@ namespace Stellar.Collections
         {
             while (_Stream.Position < _Stream.Length)
             {
-                //(TKey Key, TValue Value)? record = ReadInternalBytes_V1();
                 (TKey Key, TValue Value)? record = ReadInternalStream_V1();
                 if (record.HasValue)
                     collection.TryAdd(record.Value.Key, record.Value.Value);
             }
-        }
-
-        private (TKey Key, TValue Value)? ReadInternalBytes_V1()
-        {
-            int position;
-            byte state;
-            do
-            {
-                position = (int)_BinaryReader.BaseStream.Position;
-                state = _BinaryReader.ReadByte();
-            }
-            while (state == (byte)MemoryStateType.Unallocated && _Stream.Position < _Stream.Length);
-
-            if (_Stream.Position == _Stream.Length)
-                return null;
-
-            Debug.Assert(state == (byte)MemoryStateType.Allocated || state == (byte)MemoryStateType.Deleted || state == (byte)MemoryStateType.Pending);
-
-            int bytesLength = _BinaryReader.ReadInt32();
-            int length = sizeof(byte) + sizeof(int) + bytesLength;
-
-            if (state == (byte)MemoryStateType.Allocated)
-            {
-                byte[] bytes = _BufferPool.Rent(bytesLength);
-
-                try
-                {
-                    _BinaryReader.Read();
-                    _BinaryReader.ReadBytes(bytesLength);
-                }
-                catch
-                {
-                    _BufferPool.Return(bytes);
-                    if (Options.DeserializationFailureBehavior == ErrorBehaviorType.Exception)
-                        throw;
-                    else
-                        return null;
-                }
-
-                try
-                {
-                    (TKey Key, TValue value) record = Deserialize(bytes);
-                    _Allocated.TryAdd(record.Key, new Index(position, length));
-                    _BufferPool.Return(bytes);
-                    return record;
-                }
-                catch
-                {
-                    _BufferPool.Return(bytes);
-                    if (Options.StorageFailureBehavior == ErrorBehaviorType.Exception)
-                        throw;
-                    return null;
-                }
-            }
-            else if (state == (byte)MemoryStateType.Deleted || state == (byte)MemoryStateType.Pending)
-            {
-                _Stream.Seek(_Stream.Position + bytesLength, SeekOrigin.Begin);
-                _Deleted.Add(position, length);
-                return null;
-            }
-            else
-                throw new ArgumentOutOfRangeException();
         }
 
         private (TKey Key, TValue Value)? ReadInternalStream_V1()
@@ -147,7 +84,7 @@ namespace Stellar.Collections
                 position = (int)_BinaryReader.BaseStream.Position;
                 state = _BinaryReader.ReadByte();
             }
-            while (state == (byte)MemoryStateType.Unallocated && _Stream.Position < _Stream.Length && _Stream.Position < _Stream.Length);
+            while (state == (byte)MemoryStateType.Unallocated && _Stream.Position < _Stream.Length);
 
             if (_Stream.Position == _Stream.Length)
                 return null;
@@ -190,8 +127,6 @@ namespace Stellar.Collections
             if (_Stream == null || _CancellationTokenSource.IsCancellationRequested)
                 return false;
 
-            Debug.Assert(!_Allocated.ContainsKey(key));
-
             // serialization
             try
             {
@@ -219,6 +154,8 @@ namespace Stellar.Collections
 
             lock (_StreamLock)
             {
+                Debug.Assert(!_Allocated.ContainsKey(key));
+
                 long insertionPosition;
 
                 try
@@ -240,7 +177,8 @@ namespace Stellar.Collections
                     _BinaryWriter.Write((byte)MemoryStateType.Pending);
                     _BinaryWriter.Write(bytesLength);
                     _BinaryWriter.Write(bytes);
-                    _BinaryWriter.Flush();
+                    if (!Options.IsBufferedWritesEnabled)
+                        _BinaryWriter.Flush();
                 }
                 catch
                 {
@@ -316,7 +254,7 @@ namespace Stellar.Collections
                     try
                     {
                         _BinaryWriter.Seek(index.Start, SeekOrigin.Begin);
-                        _BinaryWriter.Write((byte)MemoryStateType.Deleted);
+                        _BinaryWriter.Write((byte)MemoryStateType.Deleted); // write tombstone byte
                         _BinaryWriter.Flush();
 
                         _Allocated.Remove(key);
