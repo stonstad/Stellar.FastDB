@@ -152,7 +152,12 @@ namespace Stellar.Collections
         /// Specifies whether compression is enabled.
         /// </summary>
         public bool IsCompressionEnabled { get; init; }
-        
+
+        /// <summary>
+        /// Specifies whether a flush is skipped after a record is written to a stream. If disabled, streams are flushed after writing record data and again after committing the record state.
+        /// </summary>
+        public bool IsBufferedWritesEnabled { get; init; } = true;
+
         /// <summary>
         /// Specifies additional options for the MessagePack serializer.
         /// </summary>
@@ -226,6 +231,7 @@ namespace Stellar.Collections
             EncryptionPassword = copy.EncryptionPassword;
             EncyptionAlgorithm = copy.EncyptionAlgorithm;
             IsCompressionEnabled = copy.IsCompressionEnabled;
+            IsBufferedWritesEnabled = copy.IsBufferedWritesEnabled;
             MessagePackOptions = copy.MessagePackOptions;
             JsonSerializerOptions = copy.JsonSerializerOptions;
             AddDuplicateKeyBehavior = copy.AddDuplicateKeyBehavior;

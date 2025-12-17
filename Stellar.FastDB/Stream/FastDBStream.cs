@@ -3,6 +3,7 @@ using MessagePack.Resolvers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,7 +33,11 @@ namespace Stellar.Collections
         private MessagePackSerializerOptions _MessagePackOptions;
         private JsonSerializerOptions _JsonSerializerOptions;
 
+#if (NET9_0_OR_GREATER)
+        private readonly Lock _StreamLock = new Lock();
+#else
         private readonly object _StreamLock = new object();
+#endif
 
         public FastDBStream(FastDBOptions options)
         {
@@ -55,10 +60,16 @@ namespace Stellar.Collections
         {
             if (_Stream == null)
             {
-                if (Options.IsReadOnlyEnabled)
-                    _Stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
+                FileShare fileShare;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    fileShare = FileShare.None;
                 else
-                    _Stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                    fileShare = FileShare.Read;
+
+                if (Options.IsReadOnlyEnabled)
+                    _Stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, fileShare);
+                else
+                    _Stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, fileShare);
             }
 
             _BinaryWriter = new BinaryWriter(_Stream);

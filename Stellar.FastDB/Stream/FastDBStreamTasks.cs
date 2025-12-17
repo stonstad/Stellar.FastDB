@@ -55,6 +55,7 @@ namespace Stellar.Collections
         private readonly SemaphoreSlim _SequentialSemaphore = new SemaphoreSlim(1);
         private int _CurrentSequentialId = 1;
         private readonly ManualResetEventSlim _SequentialProcessingChannelEmpty = new ManualResetEventSlim(true);
+        
         private void StartSequentialProcessingChannel()
         {
             ChannelWriter<QueueEntry> fileSystemChannelWriter = _FileSystemChannel.Writer;

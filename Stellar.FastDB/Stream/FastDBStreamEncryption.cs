@@ -2,6 +2,9 @@
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+#if (NET9_0_OR_GREATER)
+using System.Threading;
+#endif
 
 namespace Stellar.Collections
 {
@@ -14,8 +17,14 @@ namespace Stellar.Collections
         private MemoryStream _DecryptionStream = new MemoryStream(); // not thread safe
         private byte[] _EncryptionSalt;
         private byte[] _EncryptionChecksum;
-        private readonly object _SinglethreadedEncryptionLock = new object();
+
+#if (NET9_0_OR_GREATER)
+        private readonly Lock _SingleThreadedEncryptionLock = new Lock();
+        private readonly Lock _SingleThreadedDecryptionLock = new Lock();
+#else
+        private readonly object _SingleThreadedEncryptionLock = new object();
         private readonly object _SingleThreadedDecryptionLock = new object();
+#endif
 
         public static byte[] GenerateEncryptionSalt()
         {
@@ -65,7 +74,7 @@ namespace Stellar.Collections
             }
             else
             {
-                lock (_SinglethreadedEncryptionLock)
+                lock (_SingleThreadedEncryptionLock)
                 {
                     _EncryptionStream.SetLength(0);
                     using (CryptoStream cryptoStream = new CryptoStream(_EncryptionStream, _AesEncryptor, CryptoStreamMode.Write, leaveOpen: true))
