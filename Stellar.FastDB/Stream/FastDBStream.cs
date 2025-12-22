@@ -60,16 +60,10 @@ namespace Stellar.Collections
         {
             if (_Stream == null)
             {
-                FileShare fileShare;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    fileShare = FileShare.None;
-                else
-                    fileShare = FileShare.Read;
-
                 if (Options.IsReadOnlyEnabled)
-                    _Stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, fileShare);
+                    _Stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
                 else
-                    _Stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, fileShare);
+                    _Stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             }
 
             _BinaryWriter = new BinaryWriter(_Stream);
