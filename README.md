@@ -142,7 +142,7 @@ customer.Name = "John Wick's Dog";
 customers.Update(customer);
 
 // use LINQ to query
-var matches = customers.Where(a => a.Name.StartsWith("John") && a.Telephone > 5555555);
+var matches = customers.Where(a => a.Name.StartsWith("John") && a.Phone != null);
 
 // close database
 fastDB.Close();
