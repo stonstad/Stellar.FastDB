@@ -371,3 +371,4 @@ Each of these is `Exception` (the default) or `ReturnFalse`. The duplicate-key o
 ## Contact
 
 I may be contacted on the [Stellar Conquest Discord (stonstad)](https://discord.gg/uQsAeze) and [X (stonstad)](https://x.com/ShaunTonstad).
+
