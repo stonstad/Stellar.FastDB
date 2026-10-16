@@ -17,6 +17,7 @@ namespace Stellar.Collections
         public bool IsClosed { get; private set; }
 
         private readonly ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
+        private readonly ConcurrentDictionary<Type, string> _CollectionNames = new ConcurrentDictionary<Type, string>();
         public FastDBOptions Options { get; private set; }
 
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _CollectionLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
@@ -132,17 +133,64 @@ namespace Stellar.Collections
         /// <param name="collectionName"></param>
         /// <param name="options"></param>
         /// <returns></returns>
-        public async Task<IFastDBCollection<TKey, TValue>> GetCollectionAsync<TKey, TValue>(string collectionName = null, FastDBOptions options = null) where TKey : struct
+        public async Task<IFastDBCollection<TKey, TValue>> GetCollectionAsync<TKey, TValue>(FastDBOptions options = null) where TKey : struct
+        {
+            if (IsClosed)
+                throw ThrowHelper.DatabaseClosed(Name);
+
+            Type type = typeof(TValue);
+            string collectionName;
+            if (!_CollectionNames.TryGetValue(type, out string name))
+            {
+                collectionName = type.Name;
+                if (Options.GeneratedFileNameCreationFunction != null)
+                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
+                _CollectionNames[type] = collectionName;
+            }
+            else
+                collectionName = name;
+
+            options ??= Options;
+
+            if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
+                return collection as IFastDBCollection<TKey, TValue>;
+            else
+            {
+                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
+                await semaphore.WaitAsync();
+
+                try
+                {
+                    if (_Collections.TryGetValue(collectionName, out collection))
+                        return collection as IFastDBCollection<TKey, TValue>;
+
+                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
+                    await newCollection.LoadAsync();
+                    _Collections[collectionName] = newCollection;
+                    return newCollection;
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Retrieves a typed collection from the file system. If the collection does not exist, it is created.
+        /// </summary>
+        /// <typeparam name="TKey"></typeparam>
+        /// <typeparam name="TValue"></typeparam>
+        /// <param name="collectionName"></param>
+        /// <param name="options"></param>
+        /// <returns></returns>
+        public async Task<IFastDBCollection<TKey, TValue>> GetCollectionAsync<TKey, TValue>(string collectionName, FastDBOptions options = null) where TKey : struct
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
             if (string.IsNullOrEmpty(collectionName))
-            {
-                collectionName = typeof(TValue).Name;
-                if (Options.GeneratedFileNameCreationFunction != null)
-                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
-            }
+                throw new ArgumentNullException(nameof(collectionName));
 
             options ??= Options;
 
@@ -234,6 +282,7 @@ namespace Stellar.Collections
                 foreach (var collection in _Collections)
                     collection.Value.Close();
                 _Collections.Clear();
+                _CollectionNames.Clear();
                 _CollectionLocks.Clear();
             }
         }
@@ -250,6 +299,7 @@ namespace Stellar.Collections
                 foreach (var collection in _Collections)
                     await collection.Value.CloseAsync();
                 _Collections.Clear();
+                _CollectionNames.Clear();
                 _CollectionLocks.Clear();
             }
         }
