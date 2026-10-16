@@ -73,6 +73,7 @@ namespace Stellar.Collections
             {
                 if (_Stream.Length == 0)
                 {
+                    Serializer = Options.Serializer;
                     InitializeStream();
                     InitializeEncryption();
                     CreateHeaderInternal();
@@ -123,6 +124,8 @@ namespace Stellar.Collections
             {
                 if (Options.JsonSerializerOptions == null)
                     _JsonSerializerOptions = new JsonSerializerOptions() { IgnoreReadOnlyProperties = true };
+                else
+                    _JsonSerializerOptions = Options.JsonSerializerOptions;
             }
         }
 
@@ -276,15 +279,22 @@ namespace Stellar.Collections
         public void Clear()
         {
             CancelTasks();
+            WaitForTasks();
 
-            _Allocated.Clear();
-            _Deleted.Clear();
+            _CancellationTokenSource.Dispose();
+            _CancellationTokenSource = new CancellationTokenSource();
 
-            _BinaryWriter.Flush();
-            _Stream.Flush();
+            lock (_StreamLock)
+            {
+                _Allocated.Clear();
+                _Deleted.Clear();
 
-            _Stream.SetLength(0);
-            CreateHeaderInternal();
+                _BinaryWriter.Flush();
+                _Stream.Flush();
+
+                _Stream.SetLength(0);
+                CreateHeaderInternal();
+            }
 
             _QueueEntryPool.Clear();
             _BufferPool.Clear();

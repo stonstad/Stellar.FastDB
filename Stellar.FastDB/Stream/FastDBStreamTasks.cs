@@ -22,6 +22,8 @@ namespace Stellar.Collections
         private void StartSerializationChannel()
         {
             ChannelReader<QueueEntry> serializationChannelReader = _SerializationChannel.Reader;
+            ConcurrentDictionary<int, QueueEntry> sequentialProcessingChannel = _SequentialProcessingChannel;
+            SemaphoreSlim limitParallelizationSemaphore = _LimitParallelizationSemaphore;
             _SerializationChannelTask = Task.Run(async () =>
             {
                 while (!_CancellationTokenSource.IsCancellationRequested)
@@ -30,18 +32,18 @@ namespace Stellar.Collections
                         _SerializationChannelEmpty.Reset();
                         while (serializationChannelReader.TryRead(out QueueEntry entry))
                         {
-                            await _LimitParallelizationSemaphore.WaitAsync(_CancellationTokenSource.Token); // limit this path to N parallel tasks
+                            await limitParallelizationSemaphore.WaitAsync(_CancellationTokenSource.Token); // limit this path to N parallel tasks
                             int squentialId = Interlocked.Increment(ref _SequentialId);
                             _ = Task.Run(() =>
                             {
                                 if (entry.Type == BufferOperationType.Add || entry.Type == BufferOperationType.Update)
                                     entry.Bytes = Serialize(entry.Key, entry.Value);
 
-                                if (_SequentialProcessingChannel.TryAdd(squentialId, entry))
+                                if (sequentialProcessingChannel.TryAdd(squentialId, entry))
                                     _SequentialSemaphore.Release();
                                 else
                                     throw new Exception();
-                                _LimitParallelizationSemaphore.Release();
+                                limitParallelizationSemaphore.Release();
                             });
                         }
                         _SerializationChannelEmpty.Set();
@@ -97,7 +99,7 @@ namespace Stellar.Collections
                     while (await fileSystemChannelReader.WaitToReadAsync(_CancellationTokenSource.Token))
                     {
                         _FileSystemChannelEmpty.Reset();
-                        while (fileSystemChannelReader.TryRead(out QueueEntry entry))
+                        while (!_CancellationTokenSource.IsCancellationRequested && fileSystemChannelReader.TryRead(out QueueEntry entry))
                         {
                             if (entry.Type == BufferOperationType.Add)
                                 AddInternal(entry.Key, entry.Value, entry.Bytes);
@@ -158,6 +160,33 @@ namespace Stellar.Collections
         private void CancelTasks()
         {
             _CancellationTokenSource?.Cancel(false);
+        }
+
+        private void WaitForTasks()
+        {
+            try
+            {
+                _SerializationChannelTask?.Wait();
+            }
+            catch (AggregateException)
+            {
+            }
+
+            try
+            {
+                _SequentialProcessingTask?.Wait();
+            }
+            catch (AggregateException)
+            {
+            }
+
+            try
+            {
+                _FileSystemChannelTask?.Wait();
+            }
+            catch (AggregateException)
+            {
+            }
         }
     }
 }
