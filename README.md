@@ -1,46 +1,66 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
-Stellar.FastDB is an exceptionally fast document store for C# with speeds approximately 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
+Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
 *Throughput (Records Per Second - Higher is Better)*
 
 ```mermaid
-xychart-beta
+%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
+xychart-beta horizontal
     title "Insert 10,000"
     x-axis [FastDB, VistaDB, LiteDB, SQLite]
     y-axis "Records per second" 0 --> 400000
-    bar [347343, 2648, 1110, 644]
+    bar [347343, 0, 0, 0]
+    bar [0, 2648, 0, 0]
+    bar [0, 0, 1110, 0]
+    bar [0, 0, 0, 644]
 ```
 
 ```mermaid
-xychart-beta
+%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
+xychart-beta horizontal
     title "Delete 10,000"
     x-axis [FastDB, VistaDB, LiteDB, SQLite]
     y-axis "Records per second" 0 --> 400000
-    bar [363406, 5503, 1179, 664]
+    bar [363406, 0, 0, 0]
+    bar [0, 5503, 0, 0]
+    bar [0, 0, 1179, 0]
+    bar [0, 0, 0, 664]
 ```
 
 ```mermaid
-xychart-beta
+%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
+xychart-beta horizontal
     title "Upsert 10,000"
     x-axis [FastDB, LiteDB, VistaDB, SQLite]
     y-axis "Records per second" 0 --> 350000
-    bar [306743, 3256, 2372, 648]
+    bar [306743, 0, 0, 0]
+    bar [0, 0, 2372, 0]
+    bar [0, 3256, 0, 0]
+    bar [0, 0, 0, 648]
 ```
 
 ```mermaid
-xychart-beta
+%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
+xychart-beta horizontal
     title "Bulk Insert 10,000"
     x-axis [FastDB, SQLite, LiteDB, VistaDB]
     y-axis "Records per second" 0 --> 3000000
-    bar [2640357, 298523, 56904, 2706]
+    bar [2640357, 0, 0, 0]
+    bar [0, 0, 0, 2706]
+    bar [0, 0, 56904, 0]
+    bar [0, 298523, 0, 0]
 ```
 
 ```mermaid
-xychart-beta
+%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
+xychart-beta horizontal
     title "Query 10,000"
     x-axis [FastDB, SQLite, VistaDB, LiteDB]
     y-axis "Records per second" 0 --> 10000000
-    bar [9225092, 1291256, 574299, 420372]
+    bar [9225092, 0, 0, 0]
+    bar [0, 0, 574299, 0]
+    bar [0, 0, 0, 420372]
+    bar [0, 1291256, 0, 0]
 ```
 
 ****
@@ -52,7 +72,6 @@ xychart-beta
 - Entirely written in C#, targeting .NET 8, 9 and 10.
 - Delivered as a compact, single DLL (about 80 KB).
 - Supports multiple concurrent readers and writers. Writers that arrive together share one disk write.
-- Three durability modes: a write can return once it reaches the operating system (the default), once it is on disk, or immediately.
 - Automatic background compaction reclaims space without stopping writes.
 - Fast loading: records are decoded on all cores.
 - Schema-less NoSQL storage that adapts to changes.
@@ -153,7 +172,7 @@ Do not use this database if you need:
 
 ## Durability
 
-The `Durability` option decides when a write returns, and so which failures a write survives once it has returned. In every mode, a change is visible to reads as soon as it's made, and writers that arrive at the same time share one write to the file.
+The `Durability` option decides when a write returns and how write failures are survived.
 
 | Mode | A write returns once | Survives a process crash | Survives a power loss |
 |---|---|:---:|:---:|
@@ -161,15 +180,13 @@ The `Durability` option decides when a write returns, and so which failures a wr
 | `Synced` | it has been flushed to disk | Yes | Yes |
 | `Buffered` | it is queued in memory | No | No |
 
-**Flushed** is the default. Each write is handed to the operating system before the call returns. If your process crashes, the operating system still writes the data to disk. If the machine loses power or the operating system crashes before it has done so, the most recent writes can be lost.
+**Synced** is the slowest mode for a single writer, since every write waits for the disk; concurrent writers share each flush.
 
-**Synced** also waits for the disk to confirm each write, so a write that has returned survives a power loss. It is the slowest mode for a single writer, because every write waits for the disk. When several threads write at once, they share each flush to disk.
+**Buffered** is the fastest mode. A background thread writes the queue to the file; `Flush()` or `FlushAsync()` waits for it. `MaxBufferedBytes` (256 MB by default) caps the queue, and writes wait when it is full.
 
-**Buffered** returns as soon as a write is queued, and a background thread writes the queue to the file. It is the fastest mode, but writes still in the queue are lost if the process crashes. Call `Flush()` or `FlushAsync()` to wait until every earlier write has reached the operating system. `MaxBufferedBytes` (256 MB by default) limits the queue: when it is full, writes wait until it drains.
+**When a write fails** (for example, a full disk), the change stays in memory but not in the file. The call throws an `IOException`, or returns false if `StorageFailureBehavior` is `ReturnFalse`. In `Buffered` mode, the next `Flush()` throws instead.
 
-**When a write fails**, for example because the disk is full, the change stays in memory but isn't in the file. In `Flushed` and `Synced` modes, the call that made the change throws an `IOException`, or returns false if `StorageFailureBehavior` is `ReturnFalse`. In `Buffered` mode, the next `Flush()` throws it instead.
-
-**After a crash**, nothing written before the crash is damaged. Every block in the file carries a checksum, and when the collection opens, a write that was cut off partway through is discarded.
+**After a crash**, earlier writes are intact: every block carries a checksum, and a partly written block is discarded on open.
 
 ```C#
 FastDBOptions options = new FastDBOptions()
@@ -344,7 +361,7 @@ FastDB 2.0, 10,000 records:
 
 ## Options
 
-Pass a `FastDBOptions` to `new FastDB(options)` to apply it to every collection, or to `GetCollection` to apply it to one collection. Options can't be changed after they're created. `Serializer`, `IsCompressionEnabled` and `IsEncryptionEnabled` take effect when a collection's file is created; an existing file keeps the settings it was created with.
+Pass a `FastDBOptions` to `new FastDB(options)` to apply it to every collection, or to `GetCollection` to apply it to one collection.
 
 **Where data is stored**
 
@@ -361,7 +378,7 @@ Pass a `FastDBOptions` to `new FastDB(options)` to apply it to every collection,
 
 | Option | Default | Description |
 |---|---|---|
-| `Serializer` | `MessagePack_Contractless` | `MessagePack_Contractless`, `MessagePack_Contract` (smallest files; needs `[Key]` attributes) or `SystemTextJson_JSON`. |
+| `Serializer` | `MessagePack_Contractless` | `MessagePack_Contractless`, `MessagePack_Contract` or `SystemTextJson_JSON`. |
 | `MessagePackOptions` | None | Custom MessagePack options, such as a resolver. |
 | `JsonSerializerOptions` | None | Custom System.Text.Json options. By default, read-only properties are ignored. |
 
@@ -371,7 +388,7 @@ Pass a `FastDBOptions` to `new FastDB(options)` to apply it to every collection,
 |---|---|---|
 | `Durability` | `Flushed` | When a write returns: `Flushed`, `Synced` or `Buffered`. See [Durability](#durability). |
 | `MaxBufferedBytes` | 256 MB | In `Buffered` mode, how much data may wait to be written. When it's full, writes wait until it drains. |
-| `ParallelBulkThreshold` | 1,000 | How many records a bulk add needs before its records are serialized on all cores. |
+| `ParallelBulkThreshold` | 1,000 | How many records a bulk add needs before records are serialized on all cores. |
 | `ParallelBulkChunkSize` | 250 | The fewest records each core serializes in such a bulk add. |
 
 **Compaction**
