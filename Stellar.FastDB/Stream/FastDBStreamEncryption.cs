@@ -1,30 +1,20 @@
-﻿using System.Diagnostics;
-using System.IO;
+﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
-#if (NET9_0_OR_GREATER)
 using System.Threading;
-#endif
 
 namespace Stellar.Collections
 {
     internal sealed partial class FastDBStream<TKey, TValue> where TKey : struct
     {
-        private Aes _Aes; // thread safe
-        private ICryptoTransform _AesEncryptor;  // not thread safe
-        private ICryptoTransform _AesDecryptor;  // not thread safe
-        private MemoryStream _EncryptionStream = new MemoryStream(); // not thread safe
-        private MemoryStream _DecryptionStream = new MemoryStream(); // not thread safe
+        // Every record is encrypted with AES-CBC under the same key and IV, derived from the password and the file's
+        // salt. An Aes instance isn't thread safe, so each thread that writes records encrypts with its own.
+        private Aes _Aes;                       // the header's checksum, at open
+        private ThreadLocal<Aes> _Encryptors;   // records, one per writing thread
+        private byte[] _AesIV;
         private byte[] _EncryptionSalt;
         private byte[] _EncryptionChecksum;
-
-#if (NET9_0_OR_GREATER)
-        private readonly Lock _SingleThreadedEncryptionLock = new Lock();
-        private readonly Lock _SingleThreadedDecryptionLock = new Lock();
-#else
-        private readonly object _SingleThreadedEncryptionLock = new object();
-        private readonly object _SingleThreadedDecryptionLock = new object();
-#endif
 
         public static byte[] GenerateEncryptionSalt()
         {
@@ -41,95 +31,61 @@ namespace Stellar.Collections
             _EncryptionSalt = encryptionSalt;
             _Aes = Aes.Create();
 #if (NET10_0_OR_GREATER)
-            byte[] keyIVBytes =  Rfc2898DeriveBytes.Pbkdf2(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncyptionAlgorithm, (_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
+            byte[] keyIVBytes =  Rfc2898DeriveBytes.Pbkdf2(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncryptionAlgorithm, (_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
 #else
-            Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncyptionAlgorithm);
+            Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncryptionAlgorithm);
             byte[] keyIVBytes = pdb.GetBytes((_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
 #endif
             _Aes.Key = keyIVBytes.Take(_Aes.KeySize / 8).ToArray();
             _Aes.IV = keyIVBytes.Skip(_Aes.KeySize / 8).Take(_Aes.BlockSize / 8).ToArray();
+            _AesIV = _Aes.IV;
 
-            _AesEncryptor = _Aes.CreateEncryptor();
-            _AesDecryptor = _Aes.CreateDecryptor();
+            byte[] key = _Aes.Key;
+            _Encryptors = new ThreadLocal<Aes>(() =>
+            {
+                Aes encryptor = Aes.Create();
+                encryptor.Key = key;
+                return encryptor;
+            }, trackAllValues: true);
         }
 
-        private byte[] Encrypt(byte[] dataToEncrypt)
+        // at open only
+        private byte[] Encrypt(ReadOnlySpan<byte> data)
         {
-            Debug.Assert(dataToEncrypt != null && dataToEncrypt.Length > 0);
-            Debug.Assert(_Aes != null);
-
-            if (Options.BufferMode == BufferModeType.WriteParallelEnabled) // multithreaded
-            {
-                using (MemoryStream encryptionStream = new MemoryStream())
-                using (ICryptoTransform aesEncryptor = _Aes.CreateEncryptor())
-                using (CryptoStream cryptoStream = new CryptoStream(encryptionStream, aesEncryptor, CryptoStreamMode.Write, leaveOpen: false))
-                {
-                    cryptoStream.Write(dataToEncrypt);
-                    cryptoStream.FlushFinalBlock();
-
-                    byte[] result = encryptionStream.ToArray();
-                    Debug.Assert(result != null && result.Length > 0);
-                    return result;
-                }
-            }
-            else
-            {
-                lock (_SingleThreadedEncryptionLock)
-                {
-                    _EncryptionStream.SetLength(0);
-                    using (CryptoStream cryptoStream = new CryptoStream(_EncryptionStream, _AesEncryptor, CryptoStreamMode.Write, leaveOpen: true))
-                    {
-                        cryptoStream.Write(dataToEncrypt);
-                        cryptoStream.FlushFinalBlock();
-
-                        byte[] result = _EncryptionStream.ToArray();
-                        Debug.Assert(result != null && result.Length > 0);
-                        return result;
-                    }
-                }
-            }
+            return _Aes.EncryptCbc(data, _AesIV, PaddingMode.PKCS7);
         }
 
-        private byte[] Decrypt(byte[] dataToDecrypt)
+        // at open only
+        private byte[] Decrypt(byte[] data)
         {
-            Debug.Assert(dataToDecrypt != null && dataToDecrypt.Length > 0);
-            Debug.Assert(_Aes != null);
+            return _Aes.DecryptCbc(data, _AesIV, PaddingMode.PKCS7);
+        }
 
-            if (Options.BufferMode == BufferModeType.WriteParallelEnabled)
+        // encrypts the writer's content from start on, in place
+        private void EncryptRecord(PooledBufferWriter writer, int start)
+        {
+            Aes encryptor = _Encryptors.Value;
+            int length = encryptor.GetCiphertextLengthCbc(writer.Length - start, PaddingMode.PKCS7);
+
+            // the ciphertext goes after the plaintext, as the two can't overlap, then moves down over it
+            Span<byte> output = writer.GetSpan(length);
+            if (!encryptor.TryEncryptCbc(writer.WrittenSpan.Slice(start), _AesIV, output, out int written, PaddingMode.PKCS7))
+                throw new CryptographicException();
+            output.Slice(0, written).CopyTo(writer.GetWrittenSpan(start, written));
+            writer.Truncate(start + written);
+        }
+
+        private void DisposeEncryption()
+        {
+            _Aes?.Dispose();
+            _Aes = null;
+
+            if (_Encryptors != null)
             {
-                using (MemoryStream decryptionStream = new MemoryStream())
-                {
-                    decryptionStream.Write(dataToDecrypt, 0, dataToDecrypt.Length);
-                    decryptionStream.Seek(0, SeekOrigin.Begin);
-
-                    using (ICryptoTransform aesDecryptor = _Aes.CreateDecryptor())
-                    using (CryptoStream cryptoStream = new CryptoStream(decryptionStream, aesDecryptor, CryptoStreamMode.Read, leaveOpen: false))
-                    using (MemoryStream memoryStream = new MemoryStream())
-                    {
-                        cryptoStream.CopyTo(memoryStream);
-                        byte[] result = memoryStream.ToArray();
-                        Debug.Assert(result != null && result.Length > 0);
-                        return result;
-                    }
-                }
-            }
-            else
-            {
-                lock (_SingleThreadedDecryptionLock)
-                {
-                    _DecryptionStream.SetLength(0);
-                    _DecryptionStream.Write(dataToDecrypt, 0, dataToDecrypt.Length);
-                    _DecryptionStream.Seek(0, SeekOrigin.Begin);
-
-                    using (CryptoStream cryptoStream = new CryptoStream(_DecryptionStream, _AesDecryptor, CryptoStreamMode.Read, leaveOpen: true))
-                    using (MemoryStream memoryStream = new MemoryStream())
-                    {
-                        cryptoStream.CopyTo(memoryStream);
-                        byte[] result = memoryStream.ToArray();
-                        Debug.Assert(result != null && result.Length > 0);
-                        return result;
-                    }
-                }
+                foreach (Aes encryptor in _Encryptors.Values)
+                    encryptor.Dispose();
+                _Encryptors.Dispose();
+                _Encryptors = null;
             }
         }
     }

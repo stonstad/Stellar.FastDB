@@ -2,14 +2,23 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Stellar.Collections.Tests
 {
     /// <summary>
-    /// Randomized model-based correctness check. The same random sequence of operations is applied to FastDB and to a
-    /// reference Dictionary; after every reopen the persisted data must match the reference exactly.
-    /// Usage: modelcheck [--seed=N] [--ops=N] [--config=Name] [--no-clear] [--sync-only]
+    /// Randomized model-based correctness checks, run per configuration. Each is a separate command:
+    /// <list type="bullet">
+    /// <item>modelcheck: ordinary use. The same random add, update, remove, bulk, flush, reopen and clear sequence is
+    /// applied to FastDB and to a reference Dictionary; after every reopen the data must match the reference exactly.</item>
+    /// <item>crashcheck: the end of the file is damaged at random offsets; each reopen must keep exactly what was written
+    /// before the damage.</item>
+    /// <item>concurrentcheck: several threads write overlapping keys; what reopens must match what was in memory.</item>
+    /// <item>compactioncheck: the modelcheck sequence plus explicit Compact() calls, checking copies of the file taken
+    /// where a crash could interrupt compaction.</item>
+    /// </list>
+    /// Usage: modelcheck|crashcheck|concurrentcheck|compactioncheck [--seed=N] [--ops=N] [--config=Name] [--no-clear] [--sync-only]
     /// </summary>
     public static class ModelCheck
     {
@@ -17,12 +26,24 @@ namespace Stellar.Collections.Tests
         private const string Password = "open-sesame";
         private const int HistoryLength = 25;
 
+        private const int CrashOperations = 300;
+        private const int CrashCuts = 50;
+
+        private const int ConcurrentThreads = 8;
+        private const int ConcurrentKeys = 64;
+        private const int ConcurrentRounds = 3;
+
+        private const int CrashCopiesPerCompact = 2;
+
         // a configuration is reported as hung if no operation completes for this long
         private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan CloseAfterFailureTimeout = TimeSpan.FromSeconds(10);
 
+        public static readonly string[] Checks = { "modelcheck", "crashcheck", "concurrentcheck", "compactioncheck" };
+
         private sealed class Settings
         {
+            public string Check = "modelcheck";
             public int Seed = 1;
             public int Operations = 1000;
             public bool IncludeClear = true;
@@ -38,6 +59,8 @@ namespace Stellar.Collections.Tests
         {
             Settings settings = new Settings();
             string configurationFilter = null;
+            if (args.Length > 0)
+                settings.Check = args[0];
 
             foreach (string arg in args)
             {
@@ -55,17 +78,7 @@ namespace Stellar.Collections.Tests
 
             string baseDirectory = Path.Combine(Path.GetTempPath(), "FastDB_ModelCheck");
 
-            List<(string Name, FastDBOptions Options)> configurations = new List<(string, FastDBOptions)>()
-            {
-                ("Default", new FastDBOptions() { BaseDirectory = baseDirectory }),
-                ("Json", new FastDBOptions() { BaseDirectory = baseDirectory, Serializer = SerializerType.SystemTextJson_JSON }),
-                ("Compressed", new FastDBOptions() { BaseDirectory = baseDirectory, IsCompressionEnabled = true }),
-                ("Encrypted", new FastDBOptions() { BaseDirectory = baseDirectory, IsEncryptionEnabled = true, EncryptionPassword = Password }),
-                ("EncryptedCompressed", new FastDBOptions() { BaseDirectory = baseDirectory, IsEncryptionEnabled = true, IsCompressionEnabled = true, EncryptionPassword = Password }),
-                ("WriteBuffered", new FastDBOptions() { BaseDirectory = baseDirectory, BufferMode = BufferModeType.WriteEnabled }),
-                ("WriteParallel", new FastDBOptions() { BaseDirectory = baseDirectory, BufferMode = BufferModeType.WriteParallelEnabled, MaxDegreeOfParallelism = 4 }),
-                ("WriteParallelEncryptedCompressed", new FastDBOptions() { BaseDirectory = baseDirectory, BufferMode = BufferModeType.WriteParallelEnabled, MaxDegreeOfParallelism = 4, IsEncryptionEnabled = true, IsCompressionEnabled = true, EncryptionPassword = Password }),
-            };
+            List<(string Name, FastDBOptions Options)> configurations = Configurations(baseDirectory);
 
             string clearSetting = "on";
             if (!settings.IncludeClear)
@@ -75,7 +88,7 @@ namespace Stellar.Collections.Tests
             if (settings.SyncOnly)
                 asyncSetting = "off";
 
-            Console.WriteLine($"ModelCheck: seed {settings.Seed}, {settings.Operations:N0} operations per configuration, " +
+            Console.WriteLine($"{settings.Check}: seed {settings.Seed}, {settings.Operations:N0} operations per configuration, " +
                 $"clear {clearSetting}, async {asyncSetting}");
             Console.WriteLine(new string('=', 70));
 
@@ -91,7 +104,19 @@ namespace Stellar.Collections.Tests
                 ran++;
                 Progress progress = new Progress();
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                Task<string> run = Task.Run(() => RunConfiguration(name, options, settings, progress));
+#if FASTDB_TEST_HOOKS
+                long flushes = Interlocked.Read(ref FastDBTestHooks.Flushes);
+                long flushTicks = Interlocked.Read(ref FastDBTestHooks.FlushTicks);
+#endif
+
+                Task<string> run = Task.Run(() =>
+                {
+                    if (settings.Check == "crashcheck")
+                        return Task.FromResult(RunCrashRecovery(name, options, settings, progress));
+                    if (settings.Check == "concurrentcheck")
+                        return RunConcurrent(name, options, settings, progress);
+                    return RunConfiguration(name, options, settings, progress, settings.Check == "compactioncheck");
+                });
 
                 // watchdog: only a lack of progress counts as a hang, not a long run
                 int lastOperation = -1;
@@ -131,6 +156,12 @@ namespace Stellar.Collections.Tests
                     failures++;
                     WriteResult(name, false, error, stopwatch);
                 }
+
+#if FASTDB_TEST_HOOKS
+                flushes = Interlocked.Read(ref FastDBTestHooks.Flushes) - flushes;
+                flushTicks = Interlocked.Read(ref FastDBTestHooks.FlushTicks) - flushTicks;
+                Console.WriteLine($"     {flushes:N0} flushes to disk taking {flushTicks * 1000 / Stopwatch.Frequency:N0} ms");
+#endif
             }
 
             if (ran == 0)
@@ -154,7 +185,23 @@ namespace Stellar.Collections.Tests
             return 1;
         }
 
-        private static void WriteResult(string name, bool passed, string detail, Stopwatch stopwatch)
+        internal static List<(string Name, FastDBOptions Options)> Configurations(string baseDirectory)
+        {
+            return new List<(string, FastDBOptions)>()
+            {
+                ("Default", new FastDBOptions() { BaseDirectory = baseDirectory }),
+                ("Json", new FastDBOptions() { BaseDirectory = baseDirectory, Serializer = SerializerType.SystemTextJson_JSON }),
+                ("Compressed", new FastDBOptions() { BaseDirectory = baseDirectory, IsCompressionEnabled = true }),
+                ("Encrypted", new FastDBOptions() { BaseDirectory = baseDirectory, IsEncryptionEnabled = true, EncryptionPassword = Password }),
+                ("EncryptedCompressed", new FastDBOptions() { BaseDirectory = baseDirectory, IsEncryptionEnabled = true, IsCompressionEnabled = true, EncryptionPassword = Password }),
+                ("Buffered", new FastDBOptions() { BaseDirectory = baseDirectory, Durability = DurabilityMode.Buffered }),
+                ("Synced", new FastDBOptions() { BaseDirectory = baseDirectory, Durability = DurabilityMode.Synced }),
+                ("SyncedEncryptedCompressed", new FastDBOptions() { BaseDirectory = baseDirectory, Durability = DurabilityMode.Synced, IsEncryptionEnabled = true, IsCompressionEnabled = true, EncryptionPassword = Password }),
+                ("CompactionFlatOut", new FastDBOptions() { BaseDirectory = baseDirectory, CompactionEffort = CompactionEffort.Maximum }),
+            };
+        }
+
+        internal static void WriteResult(string name, bool passed, string detail, Stopwatch stopwatch)
         {
             if (passed)
             {
@@ -174,7 +221,7 @@ namespace Stellar.Collections.Tests
 
         private static string RerunCommand(string name, Settings settings)
         {
-            string command = $"modelcheck --seed={settings.Seed} --ops={settings.Operations} --config={name}";
+            string command = $"{settings.Check} --seed={settings.Seed} --ops={settings.Operations} --config={name}";
             if (!settings.IncludeClear)
                 command += " --no-clear";
             if (settings.SyncOnly)
@@ -191,11 +238,15 @@ namespace Stellar.Collections.Tests
         }
 
         /// <summary>
-        /// Runs one configuration. Returns null on success, or a description of the first failure.
+        /// Runs one configuration of modelcheck, or of compactioncheck when compaction is set. Returns null on success, or
+        /// a description of the first failure.
         /// </summary>
-        private static async Task<string> RunConfiguration(string name, FastDBOptions options, Settings settings, Progress progress)
+        private static async Task<string> RunConfiguration(string name, FastDBOptions options, Settings settings, Progress progress, bool compaction)
         {
-            string directory = Path.Combine(options.BaseDirectory, name);
+            string databaseName = name;
+            if (compaction)
+                databaseName = name + "_Compaction";
+            string directory = Path.Combine(options.BaseDirectory, databaseName);
             int operations = settings.Operations;
             bool includeClear = settings.IncludeClear;
 
@@ -219,7 +270,7 @@ namespace Stellar.Collections.Tests
                 if (Directory.Exists(directory))
                     Directory.Delete(directory, true);
 
-                fastDB = new FastDB(name, options);
+                fastDB = new FastDB(databaseName, options);
                 IFastDBCollection<int, Customer> collection = fastDB.GetCollection<int, Customer>();
 
                 for (operation = 0; operation < operations; operation++)
@@ -296,7 +347,7 @@ namespace Stellar.Collections.Tests
                             keys.Remove(key);
                         }
                     }
-                    else if (roll < 970)
+                    else if (roll < 970 && (!compaction || roll < 950))
                     {
                         Record($"{OperationName("Flush", useAsync)}()");
                         if (useAsync)
@@ -304,11 +355,16 @@ namespace Stellar.Collections.Tests
                         else
                             collection.Flush();
                     }
+                    else if (roll < 970)
+                    {
+                        Record($"{OperationName("Compact", useAsync)}()");
+                        await CompactWithCrashPoints(name, options, collection, model, random, useAsync);
+                    }
                     else if (roll < 998 || !includeClear)
                     {
                         Record($"Reopen() expecting {model.Count} records");
                         await fastDB.CloseAsync();
-                        fastDB = new FastDB(name, options);
+                        fastDB = new FastDB(databaseName, options);
                         collection = fastDB.GetCollection<int, Customer>();
                         Verify(collection, model);
                     }
@@ -324,7 +380,7 @@ namespace Stellar.Collections.Tests
                 operation = operations;
                 Record($"Final reopen expecting {model.Count} records");
                 await fastDB.CloseAsync();
-                fastDB = new FastDB(name, options);
+                fastDB = new FastDB(databaseName, options);
                 collection = fastDB.GetCollection<int, Customer>();
                 Verify(collection, model);
                 await fastDB.CloseAsync();
@@ -355,6 +411,373 @@ namespace Stellar.Collections.Tests
                 }
 
                 return error;
+            }
+        }
+
+        /// <summary>
+        /// Writes a random sequence, then damages the end of the file at random offsets by truncating it or garbling
+        /// bytes. Each reopen must load exactly the operations written before the damage, and accept new writes.
+        /// </summary>
+        private static string RunCrashRecovery(string name, FastDBOptions options, Settings settings, Progress progress)
+        {
+            // the expected file layout comes from an append-only history, so background compaction must not rearrange it
+            options = new FastDBOptions(options) { CompactionEffort = CompactionEffort.Off };
+
+            string databaseName = name + "_Crash";
+            string directory = Path.Combine(options.BaseDirectory, databaseName);
+            string filePath = Path.Combine(directory, nameof(Customer) + ".db");
+            Random random = new Random(settings.Seed);
+            List<List<(int Key, Customer Value)>> changes = new List<List<(int, Customer)>>();
+            List<long> endOffsets = new List<long>();
+            string step = "writing";
+            FastDB fastDB = null;
+
+            try
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+
+                fastDB = new FastDB(databaseName, options);
+                IFastDBCollection<int, Customer> collection = fastDB.GetCollection<int, Customer>();
+                long headerEnd = collection.GetSizeBytes();
+                KeySet keys = new KeySet();
+
+                int operations = Math.Min(settings.Operations, CrashOperations);
+                for (int operation = 0; operation < operations; operation++)
+                {
+                    List<(int Key, Customer Value)> change = new List<(int, Customer)>();
+                    int roll = random.Next(100);
+
+                    if (roll < 40 || keys.Count == 0)
+                    {
+                        int key = NewKey(random, keys, null);
+                        Customer customer = CreateCustomer(random, key);
+                        collection.Add(key, customer);
+                        keys.Add(key);
+                        change.Add((key, customer));
+                    }
+                    else if (roll < 70)
+                    {
+                        int key = keys.Pick(random);
+                        Customer customer = CreateCustomer(random, key);
+                        collection.Update(key, customer);
+                        change.Add((key, customer));
+                    }
+                    else if (roll < 90)
+                    {
+                        int key = keys.Pick(random);
+                        collection.Remove(key, out _);
+                        keys.Remove(key);
+                        change.Add((key, null));
+                    }
+                    else
+                    {
+                        Dictionary<int, Customer> bulk = new Dictionary<int, Customer>();
+                        int count = random.Next(1, 20);
+                        for (int b = 0; b < count; b++)
+                        {
+                            int key = NewKey(random, keys, bulk);
+                            bulk[key] = CreateCustomer(random, key);
+                        }
+                        collection.AddBulkAsync(bulk).AsTask().GetAwaiter().GetResult();
+                        foreach (var kvp in bulk)
+                        {
+                            keys.Add(kvp.Key);
+                            change.Add((kvp.Key, kvp.Value));
+                        }
+                    }
+
+                    // in buffered modes the file only reflects an operation after a flush
+                    collection.Flush();
+                    changes.Add(change);
+                    endOffsets.Add(collection.GetSizeBytes());
+                }
+
+                fastDB.Close();
+                fastDB = null;
+                byte[] original = File.ReadAllBytes(filePath);
+
+                for (int cut = 0; cut < CrashCuts; cut++)
+                {
+                    progress.Operation++;
+
+                    long offset = random.NextInt64(headerEnd, original.Length + 1);
+                    bool garble = random.Next(2) == 0;
+                    byte[] damaged;
+                    if (garble)
+                    {
+                        step = $"garbling from byte {offset:N0} of {original.Length:N0}";
+                        damaged = (byte[])original.Clone();
+                        long garbleEnd = Math.Min(offset + random.Next(1, 64), damaged.Length);
+                        for (long i = offset; i < garbleEnd; i++)
+                            damaged[i] ^= (byte)random.Next(1, 256);
+                    }
+                    else
+                    {
+                        step = $"truncating to {offset:N0} of {original.Length:N0} bytes";
+                        damaged = new byte[offset];
+                        Array.Copy(original, damaged, offset);
+                    }
+                    File.WriteAllBytes(filePath, damaged);
+
+                    // only operations that ended before the damage survive
+                    int last = endOffsets.FindLastIndex(a => a <= offset);
+                    Dictionary<int, Customer> expected = Replay(changes, last);
+                    long expectedLength = headerEnd;
+                    if (last >= 0)
+                        expectedLength = endOffsets[last];
+
+                    fastDB = new FastDB(databaseName, options);
+                    collection = fastDB.GetCollection<int, Customer>();
+                    Verify(collection, expected);
+
+                    // the damaged block is cut off, and compaction at open can only shrink the file further
+                    if (collection.GetSizeBytes() > expectedLength)
+                        throw new Exception($"File length after recovery: expected at most {expectedLength:N0}, found {collection.GetSizeBytes():N0}.");
+
+                    Customer extra = CreateCustomer(random, KeySpace + 1);
+                    collection.Add(extra.Id, extra);
+                    expected[extra.Id] = extra;
+                    fastDB.Close();
+
+                    fastDB = new FastDB(databaseName, options);
+                    Verify(fastDB.GetCollection<int, Customer>(), expected);
+                    fastDB.Close();
+                    fastDB = null;
+                }
+
+                Directory.Delete(directory, true);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    fastDB?.Close();
+                }
+                catch
+                {
+                    // the original failure is what matters
+                }
+
+                return $"  Crash recovery, {step}: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}" +
+                    $"  Rerun: {RerunCommand(name, settings)}";
+            }
+        }
+
+        /// <summary>
+        /// Compacts while keeping copies of the file taken where a crash could interrupt compaction. Each copy, and a
+        /// copy with a just-written header slot torn, must load to exactly the model. Without FASTDB_TEST_HOOKS there are
+        /// no copies, so it only compacts.
+        /// </summary>
+        private static async Task CompactWithCrashPoints(string name, FastDBOptions options, IFastDBCollection<int, Customer> collection,
+            Dictionary<int, Customer> model, Random random, bool useAsync)
+        {
+#if !FASTDB_TEST_HOOKS
+            if (useAsync)
+                await collection.CompactAsync();
+            else
+                collection.Compact();
+#else
+            // every crash copy must match the model, so nothing may still be waiting to be written
+            collection.Flush();
+
+            List<(byte[] File, int Slot)> copies = new List<(byte[], int)>();
+            int seen = 0;
+            FastDBTestHooks.CrashPoint = (file, slot) =>
+            {
+                seen++;
+                if (copies.Count < CrashCopiesPerCompact)
+                    copies.Add((file, slot));
+                else
+                {
+                    int replace = random.Next(seen);
+                    if (replace < CrashCopiesPerCompact)
+                        copies[replace] = (file, slot);
+                }
+            };
+
+            try
+            {
+                if (useAsync)
+                    await collection.CompactAsync();
+                else
+                    collection.Compact();
+            }
+            finally
+            {
+                FastDBTestHooks.CrashPoint = null;
+            }
+
+            for (int i = 0; i < copies.Count; i++)
+            {
+                (byte[] file, int slot) = copies[i];
+                VerifyCrashCopy(name, options, file, model, $"crash copy {i + 1} of {seen}");
+
+                if (slot >= 0)
+                {
+                    byte[] torn = (byte[])file.Clone();
+                    for (int b = slot; b < slot + 8; b++)
+                        torn[b] ^= 0xFF;
+                    VerifyCrashCopy(name, options, torn, model, $"crash copy {i + 1} of {seen} with a torn header slot");
+                }
+            }
+#endif
+        }
+
+        private static void VerifyCrashCopy(string name, FastDBOptions options, byte[] file, Dictionary<int, Customer> model, string description)
+        {
+            string databaseName = name + "_CrashPoint";
+            string directory = Path.Combine(options.BaseDirectory, databaseName);
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, true);
+            Directory.CreateDirectory(directory);
+            File.WriteAllBytes(Path.Combine(directory, nameof(Customer) + ".db"), file);
+
+            FastDB copy = new FastDB(databaseName, options);
+            try
+            {
+                Verify(copy.GetCollection<int, Customer>(), model);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Compaction {description}: {ex.Message}", ex);
+            }
+            finally
+            {
+                copy.Close();
+            }
+            Directory.Delete(directory, true);
+        }
+
+        private static Dictionary<int, Customer> Replay(List<List<(int Key, Customer Value)>> changes, int last)
+        {
+            Dictionary<int, Customer> state = new Dictionary<int, Customer>();
+            for (int i = 0; i <= last; i++)
+            {
+                foreach ((int key, Customer value) in changes[i])
+                {
+                    if (value == null)
+                        state.Remove(key);
+                    else
+                        state[key] = value;
+                }
+            }
+            return state;
+        }
+
+        /// <summary>
+        /// Several threads write overlapping keys at once. After they finish, what reopens must match what was in
+        /// memory.
+        /// </summary>
+        private static async Task<string> RunConcurrent(string name, FastDBOptions options, Settings settings, Progress progress)
+        {
+            string databaseName = name + "_Concurrent";
+            string directory = Path.Combine(options.BaseDirectory, databaseName);
+            int operationsPerThread = Math.Max(1, settings.Operations / ConcurrentThreads);
+            int round = 0;
+            FastDB fastDB = null;
+
+            try
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+
+                for (round = 0; round < ConcurrentRounds; round++)
+                {
+                    progress.Operation++;
+
+                    fastDB = new FastDB(databaseName, options);
+                    IFastDBCollection<int, Customer> collection = fastDB.GetCollection<int, Customer>();
+
+                    Task[] writers = new Task[ConcurrentThreads];
+                    for (int t = 0; t < ConcurrentThreads; t++)
+                    {
+                        Random random = new Random(settings.Seed * 7919 + round * ConcurrentThreads + t);
+                        writers[t] = Task.Run(() => WriteConcurrently(collection, random, operationsPerThread, settings.SyncOnly));
+                    }
+                    await Task.WhenAll(writers);
+
+                    Dictionary<int, Customer> inMemory = new Dictionary<int, Customer>();
+                    foreach (KeyValuePair<int, Customer> kvp in collection.AsEnumerable())
+                        inMemory[kvp.Key] = kvp.Value;
+
+                    await fastDB.CloseAsync();
+                    fastDB = new FastDB(databaseName, options);
+                    Verify(fastDB.GetCollection<int, Customer>(), inMemory);
+                    await fastDB.CloseAsync();
+                    fastDB = null;
+                }
+
+                Directory.Delete(directory, true);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    fastDB?.Close();
+                }
+                catch
+                {
+                    // the original failure is what matters
+                }
+
+                return $"  Concurrent writes, round {round + 1}: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}" +
+                    $"  Rerun: {RerunCommand(name, settings)}";
+            }
+        }
+
+        private static async Task WriteConcurrently(IFastDBCollection<int, Customer> collection, Random random, int operations, bool syncOnly)
+        {
+            for (int i = 0; i < operations; i++)
+            {
+                int key = random.Next(1, ConcurrentKeys + 1);
+                bool useAsync = random.Next(4) == 0 && !syncOnly;
+                int roll = random.Next(100);
+
+                try
+                {
+                    if (roll < 40)
+                    {
+                        Customer customer = CreateCustomer(random, key);
+                        if (useAsync)
+                            await collection.AddOrUpdateAsync(key, customer);
+                        else
+                            collection.AddOrUpdate(key, customer);
+                    }
+                    else if (roll < 60)
+                    {
+                        Customer customer = CreateCustomer(random, key);
+                        if (useAsync)
+                            await collection.AddAsync(key, customer);
+                        else
+                            collection.Add(key, customer);
+                    }
+                    else if (roll < 80)
+                    {
+                        Customer customer = CreateCustomer(random, key);
+                        if (useAsync)
+                            await collection.UpdateAsync(key, customer);
+                        else
+                            collection.Update(key, customer);
+                    }
+                    else
+                    {
+                        if (useAsync)
+                            await collection.RemoveAsync(key);
+                        else
+                            collection.Remove(key, out _);
+                    }
+                }
+                catch (ArgumentException ex) when (ex.GetType() == typeof(ArgumentException))
+                {
+                    // another thread added the key first
+                }
+                catch (KeyNotFoundException)
+                {
+                    // another thread removed the key first
+                }
             }
         }
 

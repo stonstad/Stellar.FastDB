@@ -29,25 +29,62 @@ namespace Stellar.Collections
     }
 
     /// <summary>
-    /// Specifies the write buffering mode which affects data consistency, parallelism, and write performance.
+    /// Specifies when a write returns, and so which failures it survives. Writers that arrive together share one
+    /// file write in every mode.
     /// </summary>
-    public enum BufferModeType
+    public enum DurabilityMode
     {
         /// <summary>
-        /// Data is written without buffering. Reads and writes are immediate consistency in memory and in storage.
+        /// A write returns once it has reached the operating system, so it survives a crash of the process but not
+        /// a power loss. This is the default.
         /// </summary>
-        Disabled,
-        
-        /// <summary>
-        /// Data is written with buffering. Reads are immediate consistency in memory and eventual consistency in storage. Use Flush() or FlushAsync() to achieve storage immediate consistency.
-        /// </summary>
-        WriteEnabled,
-        
-        /// <summary>
-        /// Data is written with buffering. Reads are immediate consistency in memory and eventual consistency in storage. Use Flush() or FlushAsync() to achieve storage immediate consistency. Serialization, compression, and encryption operations are performed in asynchronous threads.
-        /// </summary>
+        Flushed,
 
-        WriteParallelEnabled,
+        /// <summary>
+        /// A write returns immediately and reaches the file in the background. Reads see it at once. Use Flush() or
+        /// FlushAsync() to wait until earlier writes have reached the operating system.
+        /// </summary>
+        Buffered,
+
+        /// <summary>
+        /// A write returns once it has been flushed to disk, so it survives a power loss. This is the slowest mode for
+        /// a single writer.
+        /// </summary>
+        Synced,
+    }
+
+    /// <summary>
+    /// Specifies how hard background compaction works while a collection is being written: for each byte that an
+    /// overwrite or removal makes dead, how much live data compaction may move. Once no write has been committed for
+    /// FastDBOptions.CompactionIdleDelay (250 ms by default), compaction finishes at every level except Off.
+    /// </summary>
+    public enum CompactionEffort
+    {
+        /// <summary>
+        /// No background compaction, including when idle. Compact() still works.
+        /// </summary>
+        Off,
+
+        /// <summary>
+        /// Moves 1 byte of live data for every 3 bytes made dead.
+        /// </summary>
+        Low,
+
+        /// <summary>
+        /// Moves 1 byte of live data for every byte made dead. Steady writing keeps a collection file at about twice the
+        /// size of its live data. This is the default.
+        /// </summary>
+        Balanced,
+
+        /// <summary>
+        /// Moves 3 bytes of live data for every byte made dead.
+        /// </summary>
+        High,
+
+        /// <summary>
+        /// Compacts as fast as possible whenever there is dead space.
+        /// </summary>
+        Maximum,
     }
 
     /// <summary>
@@ -114,15 +151,70 @@ namespace Stellar.Collections
         public SerializerType Serializer { get; init; }
         
         /// <summary>
-        /// Specifies the buffering mode to use when writing to the file system.
+        /// Specifies when a write returns. The default is <see cref="DurabilityMode.Flushed"/>.
         /// </summary>
-        public BufferModeType BufferMode { get; init; }
-        
+        public DurabilityMode Durability { get; init; }
+
         /// <summary>
-        /// Specifies the number of asynchronous threads to use while writing buffered data to the file system.
+        /// Specifies how many bytes of serialized data may wait to be written in <see cref="DurabilityMode.Buffered"/>
+        /// mode. When the limit is reached, writes wait until the backlog drains. The default is 256 MB.
         /// </summary>
-        public int MaxDegreeOfParallelism { get; init; } = 8;
-        
+        public long MaxBufferedBytes { get; init; } = 256L * 1024 * 1024;
+
+        /// <summary>
+        /// Specifies how hard background compaction works while a collection is being written. The default is
+        /// <see cref="CompactionEffort.Balanced"/>: steady writing keeps a collection file at about twice the size of its
+        /// live data, but a burst of writes can grow it well past that. Once no write has been committed for
+        /// <see cref="CompactionIdleDelay"/>, compaction finishes at every level except Off, and the file shrinks to about
+        /// the size of its live data.
+        /// </summary>
+        public CompactionEffort CompactionEffort { get; init; } = CompactionEffort.Balanced;
+
+        /// <summary>
+        /// Specifies how long writing must pause before background compaction finishes regardless of
+        /// <see cref="CompactionEffort"/>, shrinking the file to about the size of its live data. The default is 250 ms.
+        /// </summary>
+        public TimeSpan CompactionIdleDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+
+        // the effort as a number from 0 to 1: for each byte made dead, compaction may move value / (1 - value) bytes of
+        // live data, and 1 compacts as fast as possible
+        internal double CompactionEffortValue
+        {
+            get
+            {
+                switch (CompactionEffort)
+                {
+                    case CompactionEffort.Off:
+                        return 0;
+                    case CompactionEffort.Low:
+                        return 0.25;
+                    case CompactionEffort.High:
+                        return 0.75;
+                    case CompactionEffort.Maximum:
+                        return 1;
+                    default:
+                        return 0.5;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Specifies how many records opening a collection deserializes as one batch. Batches are deserialized on all
+        /// cores and applied in file order. The default is 4096.
+        /// </summary>
+        public int LoadBatchSize { get; init; } = 4096;
+
+        /// <summary>
+        /// Specifies how many records a bulk add needs before it serializes them on all cores rather than on the calling
+        /// thread. The default is 1,000.
+        /// </summary>
+        public int ParallelBulkThreshold { get; init; } = 1000;
+
+        /// <summary>
+        /// Specifies the fewest records each core serializes when a bulk add runs on all cores. The default is 250.
+        /// </summary>
+        public int ParallelBulkChunkSize { get; init; } = 250;
+
         /// <summary>
         /// Specifies whether data is persisted in-memory only, or written to the file system.
         /// </summary>
@@ -146,17 +238,12 @@ namespace Stellar.Collections
         /// <summary>
         /// Specifies the encryption algorithm used by encryption.
         /// </summary>
-        public HashAlgorithmName EncyptionAlgorithm { get; init; } = HashAlgorithmName.SHA256;
+        public HashAlgorithmName EncryptionAlgorithm { get; init; } = HashAlgorithmName.SHA256;
         
         /// <summary>
         /// Specifies whether compression is enabled.
         /// </summary>
         public bool IsCompressionEnabled { get; init; }
-
-        /// <summary>
-        /// Specifies whether a flush is skipped after a record is written to a stream. If disabled, streams are flushed after writing record data and again after committing the record state.
-        /// </summary>
-        public bool IsBufferedWritesEnabled { get; init; } = true;
 
         /// <summary>
         /// Specifies additional options for the MessagePack serializer.
@@ -223,15 +310,19 @@ namespace Stellar.Collections
             BaseDirectory = copy.BaseDirectory;
             FileExtension = copy.FileExtension;
             Serializer = copy.Serializer;
-            BufferMode = copy.BufferMode;
-            MaxDegreeOfParallelism = copy.MaxDegreeOfParallelism;
+            Durability = copy.Durability;
+            MaxBufferedBytes = copy.MaxBufferedBytes;
+            CompactionEffort = copy.CompactionEffort;
+            CompactionIdleDelay = copy.CompactionIdleDelay;
+            LoadBatchSize = copy.LoadBatchSize;
+            ParallelBulkThreshold = copy.ParallelBulkThreshold;
+            ParallelBulkChunkSize = copy.ParallelBulkChunkSize;
             IsMemoryOnlyEnabled = copy.IsMemoryOnlyEnabled;
             IsReadOnlyEnabled = copy.IsReadOnlyEnabled;
             IsEncryptionEnabled = copy.IsEncryptionEnabled;
             EncryptionPassword = copy.EncryptionPassword;
-            EncyptionAlgorithm = copy.EncyptionAlgorithm;
+            EncryptionAlgorithm = copy.EncryptionAlgorithm;
             IsCompressionEnabled = copy.IsCompressionEnabled;
-            IsBufferedWritesEnabled = copy.IsBufferedWritesEnabled;
             MessagePackOptions = copy.MessagePackOptions;
             JsonSerializerOptions = copy.JsonSerializerOptions;
             AddDuplicateKeyBehavior = copy.AddDuplicateKeyBehavior;

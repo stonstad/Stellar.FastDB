@@ -330,13 +330,32 @@ namespace Stellar.Collections
                 await collection.Value.DeleteAsync();
         }
 
-        public async Task DefragmentMemoryAsync()
+        /// <summary>
+        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records.
+        /// </summary>
+        public void Compact()
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.DatabaseReadOnly(Name);
 
             foreach (var collection in _Collections)
-                await collection.Value.DefragmentMemoryAsync();
+                collection.Value.Compact();
+        }
+
+        /// <summary>
+        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records.
+        /// </summary>
+        public async Task CompactAsync()
+        {
+            if (IsClosed)
+                throw ThrowHelper.DatabaseClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.DatabaseReadOnly(Name);
+
+            foreach (var collection in _Collections)
+                await collection.Value.CompactAsync();
         }
 
         /// <summary>

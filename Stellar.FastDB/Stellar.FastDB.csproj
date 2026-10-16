@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net10.0; net9.0; net8.0; net7.0; net6.0;</TargetFrameworks>
+    <TargetFrameworks>net10.0; net9.0; net8.0</TargetFrameworks>
     <Nullable>disable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Authors>Shaun Tonstad</Authors>
@@ -12,10 +12,19 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeContentInPack>true</IncludeContentInPack>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <Version>1.1.1</Version>
-    <AssemblyVersion>1.1.1</AssemblyVersion>
-    <FileVersion>1.1.1</FileVersion>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0</AssemblyVersion>
+    <FileVersion>2.0.0</FileVersion>
     </PropertyGroup>
+
+  <!-- a package must never contain the test hooks (see Directory.Build.props) -->
+  <PropertyGroup Condition="'$(FastDBTestHooks)' == 'true'">
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <Target Name="RefusePackWithTestHooks" BeforeTargets="GenerateNuspec" Condition="'$(FastDBTestHooks)' == 'true'">
+    <Error Text="Stellar.FastDB can't be packed with FASTDB_TEST_HOOKS defined. Pack a Release build." />
+  </Target>
 
   <ItemGroup>
     <None Include="..\LICENSE" Link="LICENSE">
@@ -30,6 +39,11 @@
 
   <ItemGroup>
     <PackageReference Include="MessagePack" Version="3.1.12" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stellar.FastDB.Tests" />
   </ItemGroup>
 
 </Project>

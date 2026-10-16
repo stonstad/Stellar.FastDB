@@ -1,27 +1,92 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
-using System.Threading.Tasks;
+using System.IO.Hashing;
 
 namespace Stellar.Collections
 {
     internal sealed partial class FastDBStream<TKey, TValue> where TKey : struct
     {
-        private const int _HeaderSize =
-            sizeof(ushort) +    // version (2)
-            sizeof(byte) +      // serializer (1)
-            sizeof(byte) +      // format (1)
-            sizeof(byte) * 16 + // encryption salt (16)
-            sizeof(byte) * 16;  // encryption checksum (16)
+        private const ushort FormatVersion = 2;
+
+        // magic (4), version (2), serializer (1), format (1), encryption salt (16), encryption checksum (16),
+        // gap slot A (24), gap slot B (24), record count (8), reserved (32)
+        private const int HeaderSize = 128;
+
+        // gap start (8), gap size (8), sequence (4), crc32 of the first 20 bytes (4); the valid slot with the higher
+        // sequence wins, so a torn header write leaves the other slot intact
+        private const int GapSlotOffset = 40;
+        private const int GapSlotSize = 24;
+
+        // count (4), crc32 of the count (4); only sizes the in-memory index at open, so it's written at close and when
+        // a sweep pass ends rather than on every write
+        private const int RecordCountOffset = 88;
+        private const int RecordCountSize = 8;
+
+        // Each write call is one block: crc32 of the rest of the block (4), a varint header, then the payload.
+        // One record: header is (content length << 2 | remove << 1), and the payload is the content.
+        // Several records: header is (payload length << 1 | 1), and each record is a varint (content length << 1 | remove)
+        // followed by the content.
+        private const int CrcSize = sizeof(uint);
+        private const int MaxVarintLength = 5;
+        private const int BlockHeaderReserve = CrcSize + MaxVarintLength;
+
+        private const int MaxBlockSize = 1024 * 1024;
+        private const int ReadBufferSize = 1024 * 1024;
+
+        private static ReadOnlySpan<byte> Magic => "FSDB"u8;
+
+        private long _FileLength;
+
+        // the gap a compaction sweep is moving through the file; size 0 when no sweep is under way
+        private long _GapStart;
+        private long _GapSize;
+        private uint _GapSequence;
+
+        private int _RecordCount;   // the count in the header, or 0 when it has none
+
+        private void CreateHeaderInternal()
+        {
+            byte[] header = new byte[HeaderSize];
+            Magic.CopyTo(header);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(4), FormatVersion);
+            header[6] = (byte)Serializer;
+            header[7] = (byte)_Format;
+            if (Options.IsEncryptionEnabled)
+            {
+                _EncryptionChecksum = Encrypt(new byte[] { _EncryptionSalt[0], _EncryptionSalt[1] });
+                Debug.Assert(_EncryptionChecksum.Length == 16);
+                _EncryptionSalt.CopyTo(header, 8);
+                _EncryptionChecksum.CopyTo(header, 24);
+            }
+
+            RandomAccess.Write(_Handle, header, 0);
+            _FileLength = HeaderSize;
+        }
 
         private void ReadHeaderInternal()
         {
-            _Stream.Seek(0, SeekOrigin.Begin);
-            Version = _BinaryReader.ReadUInt16();
-            Serializer = (SerializerType)_BinaryReader.ReadByte();
-            _Format = (FormatType)_BinaryReader.ReadByte();
+            byte[] header = new byte[HeaderSize];
+            int length = ReadAt(header, 0);
+
+            if (length < Magic.Length || !header.AsSpan(0, Magic.Length).SequenceEqual(Magic))
+            {
+                // version 1 files have no magic and start with the version
+                if (length >= sizeof(ushort) && BinaryPrimitives.ReadUInt16LittleEndian(header) == 1)
+                    throw ThrowHelper.UnsupportedFileVersion(FilePath, 1);
+                throw ThrowHelper.NotAFastDBFile(FilePath);
+            }
+
+            if (length < HeaderSize)
+                throw ThrowHelper.NotAFastDBFile(FilePath);
+
+            Version = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(4));
+            if (Version != FormatVersion)
+                throw ThrowHelper.UnsupportedFileVersion(FilePath, Version);
+
+            Serializer = (SerializerType)header[6];
+            _Format = (FormatType)header[7];
 
             Options = new FastDBOptions(Options)
             {
@@ -30,299 +95,137 @@ namespace Stellar.Collections
                 IsEncryptionEnabled = _Format.HasFlag(FormatType.Encrypted),
             };
 
-            _EncryptionSalt = _BinaryReader.ReadBytes(16);
-            _EncryptionChecksum = _BinaryReader.ReadBytes(16);
+            _EncryptionSalt = header.AsSpan(8, 16).ToArray();
+            _EncryptionChecksum = header.AsSpan(24, 16).ToArray();
+
+            ReadGap(header);
+
+            ReadOnlySpan<byte> count = header.AsSpan(RecordCountOffset, RecordCountSize);
+            _RecordCount = 0;
+            if (Crc32.HashToUInt32(count.Slice(0, sizeof(int))) == BinaryPrimitives.ReadUInt32LittleEndian(count.Slice(sizeof(int))))
+                _RecordCount = Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(count));
         }
 
-        private void CreateHeaderInternal()
+        // caller holds _CommitLock, or is loading
+        private void WriteRecordCount()
         {
-            _BinaryWriter.Seek(0, SeekOrigin.Begin);
-            _BinaryWriter.Write(Version);                   // 2 bytes
-            _BinaryWriter.Write((byte)Serializer);          // 1 byte
-            _BinaryWriter.Write((byte)_Format);             // 1 byte
-            if (Options.IsEncryptionEnabled)
+            int count = _Values.Count;
+            if (count == _RecordCount)
+                return;
+
+            Span<byte> data = stackalloc byte[RecordCountSize];
+            BinaryPrimitives.WriteInt32LittleEndian(data, count);
+            BinaryPrimitives.WriteUInt32LittleEndian(data.Slice(sizeof(int)), Crc32.HashToUInt32(data.Slice(0, sizeof(int))));
+            RandomAccess.Write(_Handle, data, RecordCountOffset);
+            _RecordCount = count;
+        }
+
+        private void ReadGap(byte[] header)
+        {
+            _GapStart = 0;
+            _GapSize = 0;
+            _GapSequence = 0;
+
+            bool found = false;
+            for (int slot = 0; slot < 2; slot++)
             {
-                _EncryptionChecksum = Encrypt(new byte[] { _EncryptionSalt[0], _EncryptionSalt[1] });
-                _BinaryWriter.Write(_EncryptionSalt);       // 16 bytes
-                _BinaryWriter.Write(_EncryptionChecksum);   // 16 bytes
+                ReadOnlySpan<byte> data = header.AsSpan(GapSlotOffset + slot * GapSlotSize, GapSlotSize);
+                if (Crc32.HashToUInt32(data.Slice(0, GapSlotSize - CrcSize)) != BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(GapSlotSize - CrcSize)))
+                    continue;
+
+                uint sequence = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(16));
+                if (found && (int)(sequence - _GapSequence) <= 0)
+                    continue;
+
+                found = true;
+                _GapStart = BinaryPrimitives.ReadInt64LittleEndian(data);
+                _GapSize = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(8));
+                _GapSequence = sequence;
             }
-            else
-                _BinaryWriter.Write(new byte[32]);          // 32 bytes
-
-            Debug.Assert(_Stream.Position == _HeaderSize);
-            _BinaryWriter.Flush();
         }
 
-        private void LoadRecords(ConcurrentDictionary<TKey, TValue> collection)
+        // writes the gap to the slot the last write didn't use, returning the slot's offset; the caller flushes
+        private int WriteGap(long start, long size)
         {
-            switch (Version)
+            uint sequence = _GapSequence + 1;
+            byte[] slot = new byte[GapSlotSize];
+            BinaryPrimitives.WriteInt64LittleEndian(slot, start);
+            BinaryPrimitives.WriteInt64LittleEndian(slot.AsSpan(8), size);
+            BinaryPrimitives.WriteUInt32LittleEndian(slot.AsSpan(16), sequence);
+            BinaryPrimitives.WriteUInt32LittleEndian(slot.AsSpan(20), Crc32.HashToUInt32(slot.AsSpan(0, GapSlotSize - CrcSize)));
+
+            int offset = GapSlotOffset + (int)(sequence % 2) * GapSlotSize;
+            RandomAccess.Write(_Handle, slot, offset);
+            _GapStart = start;
+            _GapSize = size;
+            _GapSequence = sequence;
+            return offset;
+        }
+
+        private int ReadAt(Span<byte> buffer, long fileOffset)
+        {
+            int total = 0;
+            while (total < buffer.Length)
             {
-                case 1:
-                    LoadRecords_V1(collection);
+                int read = RandomAccess.Read(_Handle, buffer.Slice(total), fileOffset + total);
+                if (read == 0)
                     break;
-                default:
-                    throw new NotImplementedException(nameof(Version));
+                total += read;
             }
+            return total;
         }
 
-        private void LoadRecords_V1(ConcurrentDictionary<TKey, TValue> collection)
+        private static ulong RecordHeader(RecordType type, int contentLength)
         {
-            while (_Stream.Position < _Stream.Length)
-            {
-                (TKey Key, TValue Value)? record = ReadInternalStream_V1();
-                if (record.HasValue)
-                    collection.TryAdd(record.Value.Key, record.Value.Value);
-            }
+            ulong remove = 0;
+            if (type == RecordType.Remove)
+                remove = 1;
+            return ((ulong)contentLength << 1) | remove;
         }
 
-        private (TKey Key, TValue Value)? ReadInternalStream_V1()
+        private static int RecordSize(RecordType type, int contentLength)
         {
-            int position;
-            byte state;
-            do
-            {
-                position = (int)_BinaryReader.BaseStream.Position;
-                state = _BinaryReader.ReadByte();
-            }
-            while (state == (byte)MemoryStateType.Unallocated && _Stream.Position < _Stream.Length);
-
-            if (_Stream.Position == _Stream.Length)
-                return null;
-
-            Debug.Assert(state == (byte)MemoryStateType.Allocated || state == (byte)MemoryStateType.Deleted || state == (byte)MemoryStateType.Pending);
-
-            int bytesLength = _BinaryReader.ReadInt32();
-            int length = sizeof(byte) + sizeof(int) + bytesLength;
-
-            if (state == (byte)MemoryStateType.Allocated)
-            {
-                (TKey, TValue) record;
-                try
-                {
-                    record = Deserialize(_Stream, bytesLength);
-                    _Allocated.TryAdd(record.Item1, new Index(position, length));
-                    return record;
-
-                }
-                catch
-                {
-                    if (Options.DeserializationFailureBehavior == ErrorBehaviorType.Exception)
-                        throw;
-                    else
-                        return null;
-                }
-            }
-            else if (state == (byte)MemoryStateType.Deleted || state == (byte)MemoryStateType.Pending)
-            {
-                _Stream.Seek(_Stream.Position + bytesLength, SeekOrigin.Begin);
-                _Deleted.Add(position, length);
-                return null;
-            }
-            else
-                throw new ArgumentOutOfRangeException();
+            return VarintLength(RecordHeader(type, contentLength)) + contentLength;
         }
 
-        private bool AddInternal(TKey key, TValue value, byte[] bytes = null)
+        private static int VarintLength(ulong value)
         {
-            if (_Stream == null || _CancellationTokenSource.IsCancellationRequested)
-                return false;
-
-            // serialization
-            try
+            int length = 1;
+            while (value >= 0x80)
             {
-                if (bytes == null)
-                    bytes = Serialize(key, value);
-
-                if (_Stream == null || _CancellationTokenSource.IsCancellationRequested)
-                    return false;
+                value >>= 7;
+                length++;
             }
-            catch
-            {
-                if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
-                    throw;
-                else
-                    return false;
-            }
-
-            // persistence
-            int bytesLength = bytes.Length;
-
-            int length = 0;
-            length += sizeof(byte);   // state
-            length += sizeof(int);    // content length
-            length += bytesLength;    // content
-
-            lock (_StreamLock)
-            {
-                Debug.Assert(!_Allocated.ContainsKey(key));
-
-                long insertionPosition;
-
-                try
-                {
-                    // find deallocated memory
-                    (int Position, int Length)? deallocatedMemory = FindDeallocatedMemory(length);
-
-                    if (deallocatedMemory.HasValue)
-                    {
-                        _Deleted.Remove(deallocatedMemory.Value.Position);
-                        _Stream.Seek(deallocatedMemory.Value.Position, SeekOrigin.Begin);
-                    }
-                    else
-                        _Stream.Seek(0, SeekOrigin.End);
-
-                    insertionPosition = _Stream.Position;
-
-                    // write content but don't commit yet
-                    _BinaryWriter.Write((byte)MemoryStateType.Pending);
-                    _BinaryWriter.Write(bytesLength);
-                    _BinaryWriter.Write(bytes);
-                    if (!Options.IsBufferedWritesEnabled)
-                        _BinaryWriter.Flush();
-                }
-                catch
-                {
-                    if (Options.StorageFailureBehavior == ErrorBehaviorType.Exception)
-                        throw;
-                    else
-                        return false;
-                }
-
-                // commit write (only needed if write is successful)
-                try
-                {
-                    _Stream.Seek(insertionPosition, SeekOrigin.Begin);
-                    _BinaryWriter.Write((byte)MemoryStateType.Allocated);
-                    _BinaryWriter.Flush();
-                    _Allocated.Add(key, new Index(insertionPosition, length));
-                    return true;
-                }
-                catch
-                {
-                    if (Options.StorageFailureBehavior == ErrorBehaviorType.Exception)
-                        throw;
-                    else
-                        return false;
-                }
-            }
+            return length;
         }
 
-        private bool AddBulkInternal(IDictionary<TKey, TValue> dictionary)
+        private static int WriteVarint(byte[] buffer, int offset, ulong value)
         {
-            if (_Stream == null)
-                return false;
-
-            lock (_StreamLock)
+            int start = offset;
+            while (value >= 0x80)
             {
-                _Stream.Seek(0, SeekOrigin.End);
-
-                foreach (var kvp in dictionary)
-                {
-                    long start = _Stream.Position;
-                    _BinaryWriter.Write((byte)MemoryStateType.Pending);
-                    _BinaryWriter.Write(0); // content length
-
-                    long contentStart = _Stream.Position;
-                    Serialize(_Stream, kvp.Key, kvp.Value);
-                    long contentStop = _Stream.Position;
-
-                    int contentLength = (int)(contentStop - contentStart);
-
-                    _Stream.Seek(start, SeekOrigin.Begin);
-                    _BinaryWriter.Write((byte)MemoryStateType.Allocated);
-                    _BinaryWriter.Write(contentLength);
-                    _Stream.Seek(contentStop, SeekOrigin.Begin);
-
-                    Index index = new Index(start, sizeof(byte) + sizeof(int) + contentLength);
-
-                    Debug.Assert(!_Allocated.ContainsKey(kvp.Key));
-                    _Allocated.Add(kvp.Key, index);
-                }
+                buffer[offset++] = (byte)(value | 0x80);
+                value >>= 7;
             }
-            return true;
+            buffer[offset++] = (byte)value;
+            return offset - start;
         }
 
-        private bool RemoveInternal(TKey key)
+        private static bool TryReadVarint(ReadOnlySpan<byte> buffer, out ulong value, out int length)
         {
-            if (_Stream == null)
-                return false;
-
-            lock (_StreamLock)
+            value = 0;
+            for (int i = 0; i < buffer.Length && i < MaxVarintLength; i++)
             {
-                if (_Allocated.TryGetValue(key, out Index index))
+                value |= (ulong)(buffer[i] & 0x7F) << (7 * i);
+                if (buffer[i] < 0x80)
                 {
-                    try
-                    {
-                        _BinaryWriter.Seek(index.Start, SeekOrigin.Begin);
-                        _BinaryWriter.Write((byte)MemoryStateType.Deleted); // write tombstone byte
-                        _BinaryWriter.Flush();
-
-                        _Allocated.Remove(key);
-                        _Deleted.Add(index.Start, index.Length);
-
-                        // do not write size change to header (as net record count is same)
-                    }
-                    catch
-                    {
-                        if (Options.StorageFailureBehavior == ErrorBehaviorType.Exception)
-                            throw;
-                        else
-                            return false;
-                    }
-
-                    _BinaryReader.ReadInt32(); // preserve deleted record length
-
-                    for (int i = 0; i < index.Length - sizeof(byte) - sizeof(int); i++)
-                        _BinaryWriter.Write((byte)MemoryStateType.Unallocated);
-                    _BinaryWriter.Flush();
-
+                    length = i + 1;
                     return true;
                 }
             }
 
+            length = 0;
             return false;
-        }
-
-        private bool UpdateInternal(TKey key, TValue value, byte[] bytes = null)
-        {
-            lock (_StreamLock)
-            {
-                if (RemoveInternal(key))
-                    return AddInternal(key, value, bytes);
-                return false;
-            }
-        }
-
-        private (int Position, int Length)? FindDeallocatedMemory(int targetLength)
-        {
-            if (_Deleted.Count == 0)
-                return null;
-
-            int left = 0;
-            int right = _Deleted.Count - 1;
-            (int, int)? result = null;
-
-            while (left <= right)
-            {
-                int mid = left + (right - left) / 2;
-                int key = _Deleted.Keys[mid];
-                int value = _Deleted[key];
-
-                if (value >= targetLength)
-                {
-                    result = (key, value);
-                    right = mid - 1;
-                }
-                else
-                    left = mid + 1;
-            }
-
-            return result;
-        }
-
-        private async Task DefragmentMemoryInternal()
-        {
-            await Task.CompletedTask;
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 
 namespace Stellar.Collections.Tests
 {
@@ -6,9 +7,18 @@ namespace Stellar.Collections.Tests
     {
         private static async Task<int> Main(string[] args)
         {
-            // randomized correctness check: modelcheck [--seed=N] [--ops=N] [--config=Name] [--no-clear] [--sync-only]
-            if (args.Length > 0 && args[0] == "modelcheck")
+            // randomized correctness checks:
+            // modelcheck|crashcheck|concurrentcheck|compactioncheck [--seed=N] [--ops=N] [--config=Name] [--no-clear] [--sync-only]
+            if (args.Length > 0 && Array.IndexOf(ModelCheck.Checks, args[0]) >= 0)
                 return await ModelCheck.Run(args);
+
+            // load timing: loadcheck [--records=N] [--config=Name]
+            if (args.Length > 0 && args[0] == "loadcheck")
+                return await LoadCheck.Run(args);
+
+            // failure reporting: failurecheck [--config=Name]
+            if (args.Length > 0 && args[0] == "failurecheck")
+                return await FailureCheck.Run(args);
 
             int runs = 1;
             int n = 5000;

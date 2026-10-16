@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -20,7 +19,7 @@ namespace Stellar.Collections
         public bool IsClosed { get; private set; }
         public FastDBOptions Options { get; private set; }
 
-        private ConcurrentDictionary<TKey, TValue> _Values { get; set; } = new ConcurrentDictionary<TKey, TValue>();
+        private ConcurrentDictionary<TKey, TValue> _Values { get; set; }
 
         private FastDBStream<TKey, TValue> _FastDBStream;
         private bool _WriteToFileSystem => !Options.IsMemoryOnlyEnabled;
@@ -40,7 +39,7 @@ namespace Stellar.Collections
         }
 
         /// <summary>
-        /// Reopens a FastDB collection instance that was previously closed. 
+        /// Reopens a FastDB collection instance that was previously closed.
         /// This method should only be used if the collection has been explicitly closed earlier.
         /// </summary>
         public void Load()
@@ -51,16 +50,18 @@ namespace Stellar.Collections
                 _IsLoaded = true;
 
             IsClosed = false;
+
+            string filePath = null;
             if (_WriteToFileSystem)
             {
                 if (!Directory.Exists(Options.DirectoryPath))
                     Directory.CreateDirectory(Options.DirectoryPath);
 
-                string filePath = Path.Combine(Options.DirectoryPath, $"{Name}.{Options.FileExtension}");
-
-                _FastDBStream = new FastDBStream<TKey, TValue>(filePath, Options);
-                _FastDBStream.Load(_Values);
+                filePath = Path.Combine(Options.DirectoryPath, $"{Name}.{Options.FileExtension}");
             }
+
+            _FastDBStream = new FastDBStream<TKey, TValue>(filePath, Options);
+            _Values = _FastDBStream.Load();
         }
 
         public async Task LoadAsync()
@@ -75,10 +76,7 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_WriteToFileSystem)
-                _FastDBStream.Clear();
-
-            _Values.Clear();
+            _FastDBStream.Clear();
         }
 
         public void Flush()
@@ -86,8 +84,7 @@ namespace Stellar.Collections
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
 
-            if (_FastDBStream != null && _WriteToFileSystem)
-                _FastDBStream.Flush();
+            _FastDBStream.Flush();
         }
 
         public async Task FlushAsync()
@@ -95,8 +92,7 @@ namespace Stellar.Collections
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
 
-            if (_FastDBStream != null && _WriteToFileSystem)
-                await _FastDBStream.FlushAsync();
+            await _FastDBStream.FlushAsync();
         }
 
         public void Close()
@@ -105,12 +101,9 @@ namespace Stellar.Collections
                 throw ThrowHelper.CollectionClosed(Name);
 
             IsClosed = true;
-            if (_FastDBStream != null && _WriteToFileSystem)
-            {
-                _FastDBStream.Flush();
-                _FastDBStream.Dispose();
-                _FastDBStream = null;
-            }
+            _FastDBStream.Flush();
+            _FastDBStream.Dispose();
+            _FastDBStream = null;
             _Values = null;
             _IsLoaded = false;
         }
@@ -121,12 +114,9 @@ namespace Stellar.Collections
                 throw ThrowHelper.CollectionClosed(Name);
 
             IsClosed = true;
-            if (_FastDBStream != null && _WriteToFileSystem)
-            {
-                await _FastDBStream.FlushAsync();
-                _FastDBStream.Dispose();
-                _FastDBStream = null;
-            }
+            await _FastDBStream.FlushAsync();
+            _FastDBStream.Dispose();
+            _FastDBStream = null;
             _Values = null;
             _IsLoaded = false;
         }
@@ -138,11 +128,8 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_FastDBStream != null && _WriteToFileSystem)
-            {
-                _FastDBStream.Delete();
-                _FastDBStream = null;
-            }
+            _FastDBStream.Delete();
+            _FastDBStream = null;
             _Values = null;
         }
 
@@ -153,11 +140,8 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_FastDBStream != null && _WriteToFileSystem)
-            {
-                await _FastDBStream.DeleteAsync();
-                _FastDBStream = null;
-            }
+            await _FastDBStream.DeleteAsync();
+            _FastDBStream = null;
             _Values = null;
         }
 
@@ -168,114 +152,27 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_Values.TryAdd(key, value))
-            {
-                if (_WriteToFileSystem)
-                    _FastDBStream.Add(key, value);
-                return true;
-            }
-            else if (Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Upsert)
-            {
-                _Values[key] = value;
-                if (_WriteToFileSystem)
-                    _FastDBStream.Update(key, value);
-                return true;
-            }
-            else if (Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.ReturnFalse)
-                return false;
-            else
-                throw ThrowHelper.DuplicateKey(key);
+            return _FastDBStream.Add(key, value);
         }
 
-        public async Task<bool> AddAsync(TKey key, TValue value)
+        public ValueTask<bool> AddAsync(TKey key, TValue value)
         {
             if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
             if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
 
-            if (_Values.TryAdd(key, value))
-            {
-                if (_WriteToFileSystem)
-                    return await _FastDBStream.AddAsync(key, value);
-                return true;
-            }
-            else if (Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Upsert)
-            {
-                _Values[key] = value;
-                _FastDBStream.Update(key, value);
-                return true;
-            }
-            else if (Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.ReturnFalse)
-                return false;
-            else
-                throw ThrowHelper.DuplicateKey(key);
+            return _FastDBStream.AddAsync(key, value);
         }
 
-        public async Task<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary)
+        public ValueTask<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary)
         {
             if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
             if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
 
-            if (Options.BufferMode != BufferModeType.Disabled)
-                await FlushAsync();
-
-            if (Options.BulkAddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Upsert)
-            {
-                // DuplicateKeyBehaviorType.Upsert is not atomic
-                Dictionary<TKey, TValue> bulkAddDictionary = new Dictionary<TKey, TValue>();
-                Dictionary<TKey, TValue> bulkUpsertDictionary = new Dictionary<TKey, TValue>();
-
-                foreach (var kvp in dictionary)
-                {
-                    if (_Values.ContainsKey(kvp.Key))
-                        bulkUpsertDictionary[kvp.Key] = kvp.Value;
-                    else
-                        bulkAddDictionary[kvp.Key] = kvp.Value;
-
-                    _Values[kvp.Key] = kvp.Value;
-                }
-
-                foreach (var kvp in bulkUpsertDictionary)
-                    _FastDBStream.Update(kvp.Key, kvp.Value);
-
-                if (Options.BufferMode != BufferModeType.Disabled)
-                    await FlushAsync();
-
-                if (_WriteToFileSystem)
-                    return _FastDBStream.AddBulk(bulkAddDictionary);
-                return true;
-            }
-            else if (Options.BulkAddDuplicateKeyBehavior == DuplicateKeyBehaviorType.ReturnFalse)
-            {
-                foreach (var kvp in dictionary)
-                    if (_Values.ContainsKey(kvp.Key))
-                        return false;
-
-                foreach (var kvp in dictionary)
-                    _Values[kvp.Key] = kvp.Value;
-
-                if (_WriteToFileSystem)
-                    return _FastDBStream.AddBulk(dictionary);
-                return true;
-            }
-            else if (Options.BulkAddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Exception)
-            {
-                foreach (var kvp in dictionary)
-                    if (_Values.ContainsKey(kvp.Key))
-                        throw ThrowHelper.DuplicateKey(kvp.Key);
-
-                foreach (var kvp in dictionary)
-                    _Values[kvp.Key] = kvp.Value;
-
-                if (_WriteToFileSystem)
-                    return _FastDBStream.AddBulk(dictionary);
-                return true;
-            }
-            else
-                throw new Exception();
+            return _FastDBStream.AddBulkAsync(dictionary);
         }
 
         public bool Update(TKey key, TValue value)
@@ -285,37 +182,17 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_Values.ContainsKey(key))
-            {
-                _Values[key] = value;
-                if (_WriteToFileSystem)
-                    return _FastDBStream.Update(key, value);
-                return true;
-            }
-            else if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
-                throw ThrowHelper.KeyNotFound(key);
-            else
-                return false;
+            return _FastDBStream.Update(key, value);
         }
 
-        public async Task<bool> UpdateAsync(TKey key, TValue value)
+        public ValueTask<bool> UpdateAsync(TKey key, TValue value)
         {
             if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
             if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
 
-            if (_Values.TryGetValue(key, out _))
-            {
-                _Values[key] = value;
-                if (_WriteToFileSystem)
-                    return await _FastDBStream.UpdateAsync(key, value);
-                return true;
-            }
-            else if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
-                throw new KeyNotFoundException();
-            else
-                return false;
+            return _FastDBStream.UpdateAsync(key, value);
         }
 
         public bool AddOrUpdate(TKey key, TValue value)
@@ -325,23 +202,17 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_Values.ContainsKey(key))
-                return Update(key, value);
-            else
-                return Add(key, value);
+            return _FastDBStream.AddOrUpdate(key, value);
         }
 
-        public async Task<bool> AddOrUpdateAsync(TKey key, TValue value)
+        public ValueTask<bool> AddOrUpdateAsync(TKey key, TValue value)
         {
             if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
             if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
 
-            if (_Values.ContainsKey(key))
-                return await UpdateAsync(key, value);
-            else
-                return await AddAsync(key, value);
+            return _FastDBStream.AddOrUpdateAsync(key, value);
         }
 
         public bool Remove(TKey key, out TValue value)
@@ -351,51 +222,37 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_Values.TryRemove(key, out TValue v))
-            {
-                value = v;
-                if (_WriteToFileSystem)
-                    _FastDBStream.Remove(key);
-                return true;
-            }
-            else if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
-                throw new KeyNotFoundException();
-            else
-            {
-                value = default;
-                return false;
-            }
+            return _FastDBStream.Remove(key, out value);
         }
 
-        public async Task<bool> RemoveAsync(TKey key)
+        public ValueTask<bool> RemoveAsync(TKey key)
+        {
+            if (IsClosed)
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
+            if (Options.IsReadOnlyEnabled)
+                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
+
+            return _FastDBStream.RemoveAsync(key);
+        }
+
+        public void RemoveBulk(IEnumerable<TKey> keys)
         {
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_Values.TryRemove(key, out _))
-            {
-                if (_WriteToFileSystem)
-                    await _FastDBStream.RemoveAsync(key);
-                return true;
-            }
-            else if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
-                throw new KeyNotFoundException();
-            else
-                return false;
+            _FastDBStream.RemoveBulk(keys);
         }
 
-        public void RemoveBulk(IEnumerable<TKey> keys)
+        public ValueTask RemoveBulkAsync(IEnumerable<TKey> keys)
         {
-            foreach (TKey key in keys)
-                Remove(key, out _);
-        }
+            if (IsClosed)
+                return ValueTask.FromException(ThrowHelper.CollectionClosed(Name));
+            if (Options.IsReadOnlyEnabled)
+                return ValueTask.FromException(ThrowHelper.CollectionReadOnly(Name));
 
-        public async Task RemoveBulkAsync(IEnumerable<TKey> keys)
-        {
-            RemoveBulk(keys);
-            await Task.CompletedTask;
+            return _FastDBStream.RemoveBulkAsync(keys);
         }
 
         public bool TryGet(TKey key, out TValue value)
@@ -455,13 +312,24 @@ namespace Stellar.Collections
             return _Values;
         }
 
-        public async Task DefragmentMemoryAsync()
+        public void Compact()
         {
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.CollectionReadOnly(Name);
 
-            if (_FastDBStream != null)
-                await _FastDBStream.DefragmentMemory();
+            _FastDBStream.Compact();
+        }
+
+        public async Task CompactAsync()
+        {
+            if (IsClosed)
+                throw ThrowHelper.CollectionClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.CollectionReadOnly(Name);
+
+            await _FastDBStream.CompactAsync();
         }
 
         public int Count
@@ -480,9 +348,7 @@ namespace Stellar.Collections
             if (IsClosed)
                 throw ThrowHelper.CollectionClosed(Name);
 
-            if (_WriteToFileSystem)
-                return _FastDBStream.GetSizeBytes();
-            return 0;
+            return _FastDBStream.GetSizeBytes();
         }
 
         public ushort Version

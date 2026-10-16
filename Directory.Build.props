@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- FASTDB_TEST_HOOKS compiles in FastDBTestHooks, which tests use to simulate crashes and failed writes and to count
+       flushes. It is on in Debug builds only, so Release output never contains it, and Stellar.FastDB refuses to pack
+       with it on. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(Configuration)' == ''">
+    <FastDBTestHooks>true</FastDBTestHooks>
+    <DefineConstants>$(DefineConstants);FASTDB_TEST_HOOKS</DefineConstants>
+  </PropertyGroup>
+
+</Project>

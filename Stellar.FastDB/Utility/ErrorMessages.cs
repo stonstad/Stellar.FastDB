@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Stellar.Collections
 {
@@ -17,6 +18,10 @@ namespace Stellar.Collections
         internal static ArgumentOutOfRangeException EncryptionPasswordRequired() => new ArgumentOutOfRangeException($"Encryption password may not be null");
         internal static ArgumentOutOfRangeException DatabaseNameMayNotContainSpecialCharacters(string database) => new ArgumentOutOfRangeException($"Database name is a directory and may not contain special characters ('{database}')");
         internal static ArgumentOutOfRangeException DatabaseNameMayNotBeNullOrEmpty() => new ArgumentOutOfRangeException($"Database name may not be null or empty.");
+        internal static InvalidDataException UnsupportedFileVersion(string filePath, int version) => new InvalidDataException($"File '{filePath}' uses FastDB file format version {version}, which this version of FastDB can't open.");
+        internal static InvalidDataException NotAFastDBFile(string filePath) => new InvalidDataException($"File '{filePath}' is not a FastDB file.");
+        internal static IOException WriteFailed(string filePath, Exception innerException) => new IOException($"Writing to file '{filePath}' failed. The change is in memory but not in the file.", innerException);
+        internal static InvalidDataException CorruptBlock(string filePath) => new InvalidDataException($"File '{filePath}' contains a block that passed its checksum but can't be parsed.");
 
     }
 }

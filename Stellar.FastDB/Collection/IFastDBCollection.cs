@@ -59,7 +59,17 @@ namespace Stellar.Collections
         /// </summary>
         Task DeleteAsync();
 
-        Task DefragmentMemoryAsync();
+        /// <summary>
+        /// Rewrites the collection file with only its live records, reclaiming the space held by overwritten and
+        /// removed records. Writes wait while it runs; reads continue.
+        /// </summary>
+        void Compact();
+
+        /// <summary>
+        /// Rewrites the collection file with only its live records, reclaiming the space held by overwritten and
+        /// removed records. Writes wait while it runs; reads continue.
+        /// </summary>
+        Task CompactAsync();
 
         /// <summary>
         /// Returns the file system size in bytes of the database collection.
@@ -96,14 +106,14 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        Task<bool> AddAsync(TKey key, TValue value);
+        ValueTask<bool> AddAsync(TKey key, TValue value);
 
         /// <summary>
         /// Adds one or more elements to the collection.
         /// </summary>
         /// <param name="dictionary"></param>
         /// <returns></returns>
-        Task<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary);
+        ValueTask<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary);
 
         /// <summary>
         /// Updates an existing element in the collection.
@@ -119,7 +129,7 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        Task<bool> UpdateAsync(TKey key, TValue value);
+        ValueTask<bool> UpdateAsync(TKey key, TValue value);
 
         /// <summary>
         /// Adds an element to the collection or updates an existing element, if present.
@@ -135,7 +145,7 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        Task<bool> AddOrUpdateAsync(TKey key, TValue value);
+        ValueTask<bool> AddOrUpdateAsync(TKey key, TValue value);
 
         /// <summary>
         /// Removes an element from the collection.
@@ -151,7 +161,7 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        Task RemoveBulkAsync(IEnumerable<TKey> keys);
+        ValueTask RemoveBulkAsync(IEnumerable<TKey> keys);
 
         /// <summary>
         /// Removes one or more elements from the collection.
@@ -167,7 +177,7 @@ namespace Stellar.Collections
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        Task<bool> RemoveAsync(TKey key);
+        ValueTask<bool> RemoveAsync(TKey key);
 
         /// <summary>
         /// Attempts to retrieve an element from the collection. If not present, false is returned.

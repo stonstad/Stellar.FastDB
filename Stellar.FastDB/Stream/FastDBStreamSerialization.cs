@@ -1,131 +1,83 @@
 ﻿using MessagePack;
 using System;
 using System.Diagnostics;
-using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Stellar.Collections
 {
     internal sealed partial class FastDBStream<TKey, TValue> where TKey : struct
     {
-        private byte[] Serialize(TKey key, TValue value)
+        // appends one record's content to writer
+        private void Serialize(PooledBufferWriter writer, TKey key, TValue value)
         {
-            byte[] contentBytes;
+            int start = writer.Length;
 
             if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                contentBytes = MessagePackSerializer.Serialize((key, value), _MessagePackOptions);
+                MessagePackSerializer.Serialize(writer, (key, value), _MessagePackOptions);
             else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
-                contentBytes = JsonSerializer.SerializeToUtf8Bytes(new T() { K = key, V = value }, _JsonSerializerOptions);
+            {
+                Utf8JsonWriter json = writer.GetJsonWriter(_JsonWriterOptions);
+                JsonSerializer.Serialize(json, new T() { K = key, V = value }, _JsonSerializerOptions);
+                json.Flush();
+            }
             else
                 throw new NotImplementedException();
 
             if (Options.IsEncryptionEnabled)
-                contentBytes = Encrypt(contentBytes);
+                EncryptRecord(writer, start);
 
-            Debug.Assert(contentBytes != null && contentBytes.Length > 0, $"Failure serializing type ({nameof(TKey)},{nameof(TValue)})");
-
-            return contentBytes;
+            Debug.Assert(writer.Length > start, $"Failure serializing type ({nameof(TKey)},{nameof(TValue)})");
         }
 
-        private (TKey key, TValue value) Deserialize(byte[] contentBytes)
+        // appends one key's content to writer
+        private void SerializeKey(PooledBufferWriter writer, TKey key)
         {
-            Debug.Assert(contentBytes != null && contentBytes.Length > 0);
-
-            if (Options.IsEncryptionEnabled)
-                contentBytes = Decrypt(contentBytes);
+            int start = writer.Length;
 
             if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                return MessagePackSerializer.Deserialize<(TKey, TValue)>(contentBytes, _MessagePackOptions);
+                MessagePackSerializer.Serialize(writer, key, _MessagePackOptions);
             else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
             {
-                T record = JsonSerializer.Deserialize<T>(contentBytes, _JsonSerializerOptions);
+                Utf8JsonWriter json = writer.GetJsonWriter(_JsonWriterOptions);
+                JsonSerializer.Serialize(json, key, _JsonSerializerOptions);
+                json.Flush();
+            }
+            else
+                throw new NotImplementedException();
+
+            if (Options.IsEncryptionEnabled)
+                EncryptRecord(writer, start);
+
+            Debug.Assert(writer.Length > start, $"Failure serializing type ({nameof(TKey)})");
+        }
+
+        // content is already decrypted
+        private (TKey key, TValue value) Deserialize(ReadOnlyMemory<byte> content)
+        {
+            Debug.Assert(content.Length > 0);
+
+            if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
+                return MessagePackSerializer.Deserialize<(TKey, TValue)>(content, _MessagePackOptions);
+            else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
+            {
+                T record = JsonSerializer.Deserialize<T>(content.Span, _JsonSerializerOptions);
                 return (record.K, record.V);
             }
             else
                 throw new NotImplementedException();
         }
 
-        private void Serialize(Stream stream, TKey key, TValue value)
+        // content is already decrypted
+        private TKey DeserializeKey(ReadOnlyMemory<byte> content)
         {
-            if (Options.IsEncryptionEnabled)
-            {
-                using (CryptoStream cryptoStream = new CryptoStream(stream, _AesEncryptor, CryptoStreamMode.Write, leaveOpen: true))
-                {
-                    if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                        MessagePackSerializer.Serialize(cryptoStream, (key, value), _MessagePackOptions);
-                    else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
-                        JsonSerializer.Serialize(cryptoStream, new T() { K = key, V = value }, _JsonSerializerOptions);
-                    else
-                        throw new NotImplementedException();
-                    cryptoStream.FlushFinalBlock();
-                }
-            }
+            Debug.Assert(content.Length > 0);
+
+            if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
+                return MessagePackSerializer.Deserialize<TKey>(content, _MessagePackOptions);
+            else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
+                return JsonSerializer.Deserialize<TKey>(content.Span, _JsonSerializerOptions);
             else
-            {
-                if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                    MessagePackSerializer.Serialize(stream, (key, value), _MessagePackOptions);
-                else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
-                    JsonSerializer.Serialize(stream, new T() { K = key, V = value }, _JsonSerializerOptions);
-                else
-                    throw new NotImplementedException();
-            }
-        }
-
-        private (TKey key, TValue value) Deserialize(Stream stream, int bytesLength)
-        {
-            Debug.Assert(bytesLength > 0);
-
-            if (Options.IsEncryptionEnabled)
-            {
-                byte[] buffer = _BufferPool.Rent(bytesLength);
-                _ = stream.Read(buffer);
-
-                using (MemoryStream intermediateStream = new MemoryStream(buffer))
-                {
-                    intermediateStream.Position = 0;
-
-                    using (CryptoStream cryptoStream = new CryptoStream(intermediateStream, _AesDecryptor, CryptoStreamMode.Read, leaveOpen: true))
-                    {
-                        if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                        {
-                            _BufferPool.Return(buffer);
-                            (TKey, TValue) value = MessagePackSerializer.Deserialize<(TKey, TValue)>(cryptoStream, _MessagePackOptions);
-                            return value;
-                        }
-                        else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
-                        {
-                            _BufferPool.Return(buffer);
-                            T value = JsonSerializer.Deserialize<T>(cryptoStream, _JsonSerializerOptions);
-                            return (value.K, value.V);
-                        }
-                        else
-                            throw new NotImplementedException();
-                    }
-                }
-            }
-            else
-            {
-                byte[] buffer = _BufferPool.Rent(bytesLength);
-                _ = stream.Read(buffer);
-
-                if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
-                {
-                    Memory<byte> data = new Memory<byte>(buffer);
-                    (TKey, TValue) value = MessagePackSerializer.Deserialize<(TKey, TValue)>(data, _MessagePackOptions);
-                    _BufferPool.Return(buffer);
-                    return value;
-                }
-                else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
-                {
-                    ReadOnlySpan<byte> dataSpan = new ReadOnlySpan<byte>(buffer);
-                    T value = JsonSerializer.Deserialize<T>(dataSpan, _JsonSerializerOptions);
-                    _BufferPool.Return(buffer);
-                    return (value.K, value.V);
-                }
-                else
-                    throw new NotImplementedException();
-            }
+                throw new NotImplementedException();
         }
     }
 }
