@@ -1,67 +1,7 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
 Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
-*Throughput (Records Per Second - Higher is Better)*
-
-```mermaid
-%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
-xychart-beta horizontal
-    title "Insert 10,000"
-    x-axis [FastDB, VistaDB, LiteDB, SQLite]
-    y-axis "Records per second" 0 --> 400000
-    bar [347343, 0, 0, 0]
-    bar [0, 2648, 0, 0]
-    bar [0, 0, 1110, 0]
-    bar [0, 0, 0, 644]
-```
-
-```mermaid
-%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
-xychart-beta horizontal
-    title "Delete 10,000"
-    x-axis [FastDB, VistaDB, LiteDB, SQLite]
-    y-axis "Records per second" 0 --> 400000
-    bar [363406, 0, 0, 0]
-    bar [0, 5503, 0, 0]
-    bar [0, 0, 1179, 0]
-    bar [0, 0, 0, 664]
-```
-
-```mermaid
-%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
-xychart-beta horizontal
-    title "Upsert 10,000"
-    x-axis [FastDB, LiteDB, VistaDB, SQLite]
-    y-axis "Records per second" 0 --> 350000
-    bar [306743, 0, 0, 0]
-    bar [0, 0, 2372, 0]
-    bar [0, 3256, 0, 0]
-    bar [0, 0, 0, 648]
-```
-
-```mermaid
-%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
-xychart-beta horizontal
-    title "Bulk Insert 10,000"
-    x-axis [FastDB, SQLite, LiteDB, VistaDB]
-    y-axis "Records per second" 0 --> 3000000
-    bar [2640357, 0, 0, 0]
-    bar [0, 0, 0, 2706]
-    bar [0, 0, 56904, 0]
-    bar [0, 298523, 0, 0]
-```
-
-```mermaid
-%%{init: {"xyChart": {"width": 500, "height": 200}, "themeVariables": {"xyChart": {"plotColorPalette": "#1f6feb, #d29922, #2da44e, #8250df"}}}}%%
-xychart-beta horizontal
-    title "Query 10,000"
-    x-axis [FastDB, SQLite, VistaDB, LiteDB]
-    y-axis "Records per second" 0 --> 10000000
-    bar [9225092, 0, 0, 0]
-    bar [0, 0, 574299, 0]
-    bar [0, 0, 0, 420372]
-    bar [0, 1291256, 0, 0]
-```
+![Embedded Storage Performance - 10,000 Records](https://i.imgur.com/IMGUR_ID.png)
 
 ****
 
@@ -97,53 +37,53 @@ Measured on an AMD Ryzen 9 7950X with Windows 11 and .NET 10, using BenchmarkDot
 
  Method      | Op/s      | FileSize |
 ------------ |----------:|---------:|
- Insert 10,000 | 339,801 | 663 KB |
- Delete 10,000 | 357,801 | 0 KB |
- Upsert 10,000 | 318,033 | 614 KB |
- Bulk Insert 10,000 | 3,007,217 | 614 KB |
- Query 10,000 | 9,032,064 | 663 KB |
+ Insert 10,000 | 339,593 | 663 KB |
+ Delete 10,000 | 356,389 | 0 KB |
+ Upsert 10,000 | 315,831 | 614 KB |
+ Bulk Insert 10,000 | 2,686,343 | 614 KB |
+ Query 10,000 | 8,733,116 | 663 KB |
 
 ### Compared with other embedded databases
 
 #### Insert
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Insert 10,000** | <ins>FastDB</ins>  | **347,343** | **663 KB** |
+ **Insert 10,000** | <ins>FastDB</ins>  | **339,593** | **663 KB** |
  Insert 10,000 | VistaDB |   2,648 |   940 KB |
- Insert 10,000 | LiteDB  |   1,110 | 1,656 KB |
- Insert 10,000 | SQLite  |     644 |   444 KB |
+ Insert 10,000 | LiteDB  |   1,265 | 1,656 KB |
+ Insert 10,000 | SQLite  |     687 |   444 KB |
 
 #### Delete
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Delete 10,000** | <ins>FastDB</ins>  | **363,406** | **0 KB** |
+ **Delete 10,000** | <ins>FastDB</ins>  | **356,389** | **0 KB** |
  Delete 10,000 | VistaDB |   5,503 |   940 KB |
- Delete 10,000 | LiteDB  |   1,179 | 1,664 KB |
- Delete 10,000 | SQLite  |     664 |   444 KB |
+ Delete 10,000 | LiteDB  |   1,206 | 1,664 KB |
+ Delete 10,000 | SQLite  |     697 |   444 KB |
 
 #### Upsert
  Method      | Product | Op/s      | FileSize |
 ------------ |-------- |----------:|---------:|
- **Upsert 10,000** | <ins>FastDB</ins>  | **306,743** | **614 KB** |
- Upsert 10,000 | LiteDB  |   3,256 | 1,664 KB |
+ **Upsert 10,000** | <ins>FastDB</ins>  | **315,831** | **614 KB** |
+ Upsert 10,000 | LiteDB  |   3,460 | 1,664 KB |
  Upsert 10,000 | VistaDB |   2,372 |   940 KB |
- Upsert 10,000 | SQLite  |     648 |   444 KB |
+ Upsert 10,000 | SQLite  |     679 |   444 KB |
 
 #### Bulk Insert
  Method    | Product | Op/s      | FileSize |
 ---------- |-------- |----------:|---------:|
- **Bulk 10,000** | <ins>FastDB</ins>  | **2,640,357** |   **614 KB** |
- Bulk 10,000 | SQLite  | 298,523 |   444 KB |
- Bulk 10,000 | LiteDB  |  56,904 |     8 KB |
+ **Bulk 10,000** | <ins>FastDB</ins>  | **2,686,343** |   **614 KB** |
+ Bulk 10,000 | SQLite  | 303,470 |   444 KB |
+ Bulk 10,000 | LiteDB  |  55,231 |     8 KB |
  Bulk 10,000 | VistaDB |   2,706 |   952 KB |
 
 #### Query
  Method     | Product | Op/s         | FileSize |
 ----------- |-------- |-------------:|---------:|
- **Query 10,000** | <ins>FastDB</ins>  | **9,225,092** | **663 KB** |
- Query 10,000 | SQLite  |  1,291,256 |   444 KB |
+ **Query 10,000** | <ins>FastDB</ins>  | **8,733,116** | **663 KB** |
+ Query 10,000 | SQLite  |  1,892,530 |   444 KB |
  Query 10,000 | VistaDB |    574,299 |   940 KB |
- Query 10,000 | LiteDB  |    420,372 | 1,656 KB |
+ Query 10,000 | LiteDB  |    404,380 | 1,656 KB |
 
  ---
 
@@ -311,10 +251,10 @@ FastDB 2.0, 10,000 records of about 2 KB each:
 
 |  Method                           | Op/s      | FileSize |
 |--------------------------------- |----------:|---------:|
-| Large                            | 173,090 | 20,106 KB |
-| Large Encrypted                  | 123,968 | 20,214 KB |
-| Large Encrypted Compressed       |  91,494 | 14,902 KB |
-| Large Encrypted Compressed Buffered | 124,242 | 14,898 KB |
+| Large                            | 155,679 | 20,106 KB |
+| Large Encrypted                  | 127,716 | 20,214 KB |
+| Large Encrypted Compressed       |  89,838 | 14,902 KB |
+| Large Encrypted Compressed Buffered | 121,830 | 14,899 KB |
 
 ### Optional Serialization Contracts
 
@@ -356,8 +296,8 @@ FastDB 2.0, 10,000 records:
 
 | Serializer | Op/s      | FileSize |
 |--------- |----------:|---------:|
-| Default 10,000  | 355,669 |   663 KB |
-| Contract 10,000 | 349,656 |   379 KB |
+| Default 10,000  | 325,095 |   663 KB |
+| Contract 10,000 | 324,891 |   379 KB |
 
 ## Options
 
