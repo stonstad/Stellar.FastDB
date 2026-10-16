@@ -1,7 +1,7 @@
 # Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
 Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
-![Embedded Storage Performance - 10,000 Records](https://i.imgur.com/IMGUR_ID.png)
+![Embedded Storage Performance - 10,000 Records](https://raw.githubusercontent.com/stonstad/Stellar.FastDB/main/fastdb-benchmark-10000.png)
 
 ****
 
