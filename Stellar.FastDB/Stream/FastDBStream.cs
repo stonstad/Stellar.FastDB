@@ -181,6 +181,8 @@ namespace Stellar.Collections
 
         public async Task<bool> AddAsync(TKey key, TValue value)
         {
+            if (Options.BufferMode != BufferModeType.Disabled)
+                return Add(key, value);
             return await Task.Run(() => AddInternal(key, value));
         }
 
@@ -214,6 +216,8 @@ namespace Stellar.Collections
 
         public async Task<bool> RemoveAsync(TKey key)
         {
+            if (Options.BufferMode != BufferModeType.Disabled)
+                return Remove(key);
             return await Task.Run(() => RemoveInternal(key));
         }
 
@@ -237,6 +241,8 @@ namespace Stellar.Collections
 
         public async Task<bool> UpdateAsync(TKey key, TValue value)
         {
+            if (Options.BufferMode != BufferModeType.Disabled)
+                return Update(key, value);
             return await Task.Run(() => UpdateInternal(key, value));
         }
 
