@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 
@@ -18,10 +17,7 @@ namespace Stellar.Collections
 
         public static byte[] GenerateEncryptionSalt()
         {
-            byte[] saltBytes = new byte[16];
-            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
-                rng.GetBytes(saltBytes);
-            return saltBytes;
+            return RandomNumberGenerator.GetBytes(16);
         }
 
         private void InitializeAesEncryption(byte[] encryptionSalt)
@@ -30,14 +26,10 @@ namespace Stellar.Collections
 
             _EncryptionSalt = encryptionSalt;
             _Aes = Aes.Create();
-#if (NET10_0_OR_GREATER)
-            byte[] keyIVBytes =  Rfc2898DeriveBytes.Pbkdf2(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncryptionAlgorithm, (_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
-#else
-            Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncryptionAlgorithm);
-            byte[] keyIVBytes = pdb.GetBytes((_Aes.KeySize / 8) + (_Aes.BlockSize / 8));
-#endif
-            _Aes.Key = keyIVBytes.Take(_Aes.KeySize / 8).ToArray();
-            _Aes.IV = keyIVBytes.Skip(_Aes.KeySize / 8).Take(_Aes.BlockSize / 8).ToArray();
+            int keyLength = _Aes.KeySize / 8;
+            byte[] keyIV = Rfc2898DeriveBytes.Pbkdf2(Options.EncryptionPassword, encryptionSalt, 1000, Options.EncryptionAlgorithm, keyLength + _Aes.BlockSize / 8);
+            _Aes.Key = keyIV[..keyLength];
+            _Aes.IV = keyIV[keyLength..];
             _AesIV = _Aes.IV;
 
             byte[] key = _Aes.Key;

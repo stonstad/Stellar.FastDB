@@ -178,25 +178,14 @@ namespace Stellar.Collections
 
         // the effort as a number from 0 to 1: for each byte made dead, compaction may move value / (1 - value) bytes of
         // live data, and 1 compacts as fast as possible
-        internal double CompactionEffortValue
+        internal double CompactionEffortValue => CompactionEffort switch
         {
-            get
-            {
-                switch (CompactionEffort)
-                {
-                    case CompactionEffort.Off:
-                        return 0;
-                    case CompactionEffort.Low:
-                        return 0.25;
-                    case CompactionEffort.High:
-                        return 0.75;
-                    case CompactionEffort.Maximum:
-                        return 1;
-                    default:
-                        return 0.5;
-                }
-            }
-        }
+            CompactionEffort.Off => 0,
+            CompactionEffort.Low => 0.25,
+            CompactionEffort.High => 0.75,
+            CompactionEffort.Maximum => 1,
+            _ => 0.5,
+        };
 
         /// <summary>
         /// Specifies how many records opening a collection deserializes as one batch. Batches are deserialized on all
@@ -332,6 +321,7 @@ namespace Stellar.Collections
             StorageFailureBehavior = copy.StorageFailureBehavior;
             SerializationFailureBehavior = copy.SerializationFailureBehavior;
             DeserializationFailureBehavior = copy.DeserializationFailureBehavior;
+            GeneratedFileNameCreationFunction = copy.GeneratedFileNameCreationFunction;
         }
     }
 }

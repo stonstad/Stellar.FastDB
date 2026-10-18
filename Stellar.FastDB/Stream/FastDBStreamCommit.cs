@@ -143,7 +143,16 @@ namespace Stellar.Collections
             batch.Frames[frame] = (batch.Frames[frame].Start, batch.Frames[frame].Records + 1);
             batch.Bytes += size;
             batch.LastSequence = ++_Sequence;
-            Interlocked.Add(ref _PendingBytes, size);
+        }
+
+        // caller holds _StreamLock and has appended a write's records: counts their bytes, pending since the batch held
+        // bytesBefore, toward the backlog in one step rather than one per record, and the write toward the batch's
+        // writers; returns the write's last sequence
+        private long EndWrite(long bytesBefore)
+        {
+            Interlocked.Add(ref _PendingBytes, _Pending.Bytes - bytesBefore);
+            _Pending.Operations++;
+            return _Sequence;
         }
 
         private static void Reserve(Batch batch, int count)
@@ -254,6 +263,7 @@ namespace Stellar.Collections
 #if FASTDB_TEST_HOOKS
             long started = Stopwatch.GetTimestamp();
 #endif
+            // _FlushHandle on Windows; elsewhere it's null and fsync on _Handle doesn't hold up other operations
             RandomAccess.FlushToDisk(_FlushHandle ?? _Handle);
 #if FASTDB_TEST_HOOKS
             Interlocked.Increment(ref FastDBTestHooks.Flushes);
@@ -400,6 +410,15 @@ namespace Stellar.Collections
             return null;
         }
 
+        // CompleteOrWait for a write that returns ValueTask<bool>
+        private ValueTask<bool> CompleteAsync(long sequence)
+        {
+            CommitWaiter waiter = CompleteOrWait(sequence, out bool succeeded);
+            if (waiter == null)
+                return new ValueTask<bool>(succeeded);
+            return new ValueTask<bool>(waiter, waiter.Version);
+        }
+
         // caller holds _CommitLock: completes the async writers whose records are now written
         private void CompleteWaiters()
         {
@@ -438,7 +457,11 @@ namespace Stellar.Collections
 
         private void ScheduleCommit()
         {
-            if (Interlocked.Read(ref _PendingBytes) > 0 && Interlocked.CompareExchange(ref _CommitPassScheduled, 1, 0) == 0)
+            // the fence keeps the caller's last store (releasing _CommitLock, or clearing _CommitPassScheduled) ahead of
+            // the read, so either this sees a writer's append or the writer sees that store. Unlike Interlocked.Read, it
+            // doesn't take _PendingBytes' cache line from the other writers.
+            Interlocked.MemoryBarrier();
+            if (Volatile.Read(ref _PendingBytes) > 0 && Interlocked.CompareExchange(ref _CommitPassScheduled, 1, 0) == 0)
                 ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
         }
 
@@ -461,8 +484,11 @@ namespace Stellar.Collections
 
         private bool HasBufferSpace()
         {
-            return Interlocked.Read(ref _PendingBytes) < Options.MaxBufferedBytes;
+            return Volatile.Read(ref _PendingBytes) < Options.MaxBufferedBytes;
         }
+
+        // a buffered write waits for the backlog to drain below MaxBufferedBytes before it serializes
+        private bool MustWaitForBufferSpace => _Handle != null && Options.Durability == DurabilityMode.Buffered && !HasBufferSpace();
 
         private void WaitForBufferSpace()
         {

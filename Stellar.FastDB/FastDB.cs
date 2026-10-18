@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,11 +18,19 @@ namespace Stellar.Collections
         /// </summary>
         public bool IsClosed { get; private set; }
 
+        // the open collections: each forgets itself as it closes or is deleted
         private readonly ConcurrentDictionary<string, IFastDBCollection> _Collections = new ConcurrentDictionary<string, IFastDBCollection>();
-        private readonly ConcurrentDictionary<Type, string> _CollectionNames = new ConcurrentDictionary<Type, string>();
         public FastDBOptions Options { get; private set; }
 
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _CollectionLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
+        // a name's collection is opened, closed and deleted under its lock, so its file is never open twice. A lock lives
+        // only while it's held or awaited, so names used once don't pile up.
+        private sealed class NameLock
+        {
+            public readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
+            public int Users;                   // holders and waiters, under _NameLocks
+        }
+
+        private readonly Dictionary<string, NameLock> _NameLocks = new Dictionary<string, NameLock>();
 
         /// <summary>
         /// Creates a new instance of Stellar.FastDB using default options.
@@ -91,38 +101,34 @@ namespace Stellar.Collections
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            if (string.IsNullOrEmpty(collectionName))
+            collectionName = CollectionName<TValue>(collectionName);
+            IFastDBCollection<TKey, TValue> collection = OpenCollection<TKey, TValue>(collectionName);
+            if (collection != null)
+                return collection;
+
+            FastDBCollection<TKey, TValue> newCollection;
+            EnterName(collectionName);
+            try
             {
-                collectionName = typeof(TValue).Name;
-                if (Options.GeneratedFileNameCreationFunction != null)
-                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
+                collection = OpenCollection<TKey, TValue>(collectionName);
+                if (collection != null)
+                    return collection;
+
+                newCollection = new FastDBCollection<TKey, TValue>(this, collectionName, options ?? Options);
+                newCollection.Load();
+                _Collections[collectionName] = newCollection;
+            }
+            finally
+            {
+                ExitName(collectionName);
             }
 
-            options ??= Options;
-
-            if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
-                return collection as IFastDBCollection<TKey, TValue>;
-            else
+            if (ClosedWhileOpening())
             {
-                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
-                semaphore.Wait();
-
-                try
-                {
-                    if (_Collections.TryGetValue(collectionName, out collection))
-                        return collection as IFastDBCollection<TKey, TValue>;
-
-                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
-                    newCollection.Load();
-                    _Collections[collectionName] = newCollection;
-
-                    return newCollection;
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
+                newCollection.Close(false);
+                throw ThrowHelper.DatabaseClosed(Name);
             }
+            return newCollection;
         }
 
         /// <summary>
@@ -138,42 +144,7 @@ namespace Stellar.Collections
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            Type type = typeof(TValue);
-            string collectionName;
-            if (!_CollectionNames.TryGetValue(type, out string name))
-            {
-                collectionName = type.Name;
-                if (Options.GeneratedFileNameCreationFunction != null)
-                    collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
-                _CollectionNames[type] = collectionName;
-            }
-            else
-                collectionName = name;
-
-            options ??= Options;
-
-            if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
-                return collection as IFastDBCollection<TKey, TValue>;
-            else
-            {
-                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
-                await semaphore.WaitAsync();
-
-                try
-                {
-                    if (_Collections.TryGetValue(collectionName, out collection))
-                        return collection as IFastDBCollection<TKey, TValue>;
-
-                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
-                    await newCollection.LoadAsync();
-                    _Collections[collectionName] = newCollection;
-                    return newCollection;
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }
+            return await GetCollectionAsync<TKey, TValue>(CollectionName<TValue>(null), options);
         }
 
         /// <summary>
@@ -192,28 +163,148 @@ namespace Stellar.Collections
             if (string.IsNullOrEmpty(collectionName))
                 throw new ArgumentNullException(nameof(collectionName));
 
-            options ??= Options;
+            IFastDBCollection<TKey, TValue> collection = OpenCollection<TKey, TValue>(collectionName);
+            if (collection != null)
+                return collection;
 
-            if (_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
-                return collection as IFastDBCollection<TKey, TValue>;
-            else
+            // a name lock is held across these awaits, so they don't resume on the caller's context: a thread that waits
+            // for the same lock there would never let them finish
+            FastDBCollection<TKey, TValue> newCollection;
+            await EnterNameAsync(collectionName).ConfigureAwait(false);
+            try
             {
-                var semaphore = _CollectionLocks.GetOrAdd(collectionName, a => new SemaphoreSlim(1, 1));
-                await semaphore.WaitAsync();
+                collection = OpenCollection<TKey, TValue>(collectionName);
+                if (collection != null)
+                    return collection;
 
+                newCollection = new FastDBCollection<TKey, TValue>(this, collectionName, options ?? Options);
+                await newCollection.LoadAsync().ConfigureAwait(false);
+                _Collections[collectionName] = newCollection;
+            }
+            finally
+            {
+                ExitName(collectionName);
+            }
+
+            if (ClosedWhileOpening())
+            {
+                await newCollection.CloseAsync(false).ConfigureAwait(false);
+                throw ThrowHelper.DatabaseClosed(Name);
+            }
+            return newCollection;
+        }
+
+        // the collection's name, from its value type when none is given
+        private string CollectionName<TValue>(string collectionName)
+        {
+            if (!string.IsNullOrEmpty(collectionName))
+                return collectionName;
+
+            collectionName = typeof(TValue).Name;
+            if (Options.GeneratedFileNameCreationFunction != null)
+                collectionName = Options.GeneratedFileNameCreationFunction(collectionName);
+            return collectionName;
+        }
+
+        // the open collection with this name, or null if none is open
+        private IFastDBCollection<TKey, TValue> OpenCollection<TKey, TValue>(string collectionName) where TKey : struct
+        {
+            if (!_Collections.TryGetValue(collectionName, out IFastDBCollection collection))
+                return null;
+            if (collection is IFastDBCollection<TKey, TValue> typed)
+                return typed;
+            throw ThrowHelper.CollectionTypeMismatch(collectionName, typeof(TKey), typeof(TValue));
+        }
+
+        // after registering a new collection: a Close() or Delete() that started meanwhile may have missed it. Either this
+        // sees IsClosed or they see the collection, as each side fences between its write and its read.
+        private bool ClosedWhileOpening()
+        {
+            Interlocked.MemoryBarrier();
+            return IsClosed;
+        }
+
+        // before Close() or Delete() reads the collections; see ClosedWhileOpening()
+        private void MarkClosed()
+        {
+            IsClosed = true;
+            Interlocked.MemoryBarrier();
+        }
+
+        internal void EnterName(string collectionName)
+        {
+            AddNameUser(collectionName).Semaphore.Wait();
+        }
+
+        internal Task EnterNameAsync(string collectionName)
+        {
+            return AddNameUser(collectionName).Semaphore.WaitAsync();
+        }
+
+        internal void ExitName(string collectionName)
+        {
+            NameLock nameLock;
+            lock (_NameLocks)
+                nameLock = _NameLocks[collectionName];
+            nameLock.Semaphore.Release();
+            RemoveNameUser(collectionName);
+        }
+
+        private NameLock AddNameUser(string collectionName)
+        {
+            lock (_NameLocks)
+            {
+                if (!_NameLocks.TryGetValue(collectionName, out NameLock nameLock))
+                {
+                    nameLock = new NameLock();
+                    _NameLocks.Add(collectionName, nameLock);
+                }
+                nameLock.Users++;
+                return nameLock;
+            }
+        }
+
+        private void RemoveNameUser(string collectionName)
+        {
+            lock (_NameLocks)
+            {
+                if (--_NameLocks[collectionName].Users == 0)
+                    _NameLocks.Remove(collectionName);
+            }
+        }
+
+        // a collection closing or being deleted, under its name's lock: GetCollection() opens the name afresh from now on
+        internal void Forget(string collectionName, IFastDBCollection collection)
+        {
+            _Collections.TryRemove(new KeyValuePair<string, IFastDBCollection>(collectionName, collection));
+        }
+
+        // runs a database-wide call on each open collection, skipping one that closes on its own meanwhile rather than
+        // fail on it; any other failure is thrown
+        private void ForEachOpen(Action<IFastDBCollection> action)
+        {
+            foreach (IFastDBCollection collection in _Collections.Values)
+            {
                 try
                 {
-                    if (_Collections.TryGetValue(collectionName, out collection))
-                        return collection as IFastDBCollection<TKey, TValue>;
-
-                    FastDBCollection<TKey, TValue> newCollection = new FastDBCollection<TKey, TValue>(collectionName, options);
-                    await newCollection.LoadAsync();
-                    _Collections[collectionName] = newCollection;
-                    return newCollection;
+                    action(collection);
                 }
-                finally
+                catch (InvalidOperationException) when (collection.IsClosed)
                 {
-                    semaphore.Release();
+                }
+            }
+        }
+
+        private async Task ForEachOpenAsync(Func<IFastDBCollection, Task> action)
+        {
+            foreach (IFastDBCollection collection in _Collections.Values)
+            {
+                try
+                {
+                    await action(collection);
+                }
+                catch (InvalidOperationException) when (collection.IsClosed)
+                {
                 }
             }
         }
@@ -228,8 +319,7 @@ namespace Stellar.Collections
                 throw ThrowHelper.DatabaseClosed(Name);
 
             int count = 0;
-            foreach (var collection in _Collections)
-                count += collection.Value.Count;
+            ForEachOpen(collection => count += collection.Count);
             return count;
         }
 
@@ -243,95 +333,124 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.DatabaseReadOnly(Name);
 
-            foreach (var collection in _Collections)
-                collection.Value.Clear();
+            ForEachOpen(collection => collection.Clear());
         }
 
         /// <summary>
-        /// Performs a blocking flush operation to wait for file system writes to complete.
+        /// Performs a blocking flush operation to wait for file system writes of all open database collections to
+        /// complete.
         /// </summary>
         public void Flush()
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            foreach (var collection in _Collections)
-                collection.Value.Flush();
+            ForEachOpen(collection => collection.Flush());
         }
 
         /// <summary>
-        /// Performs an asynchronous blocking flush operation to wait for file system writes to complete.
+        /// Performs an asynchronous blocking flush operation to wait for file system writes of all open database
+        /// collections to complete.
         /// </summary>
         public async Task FlushAsync()
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
 
-            foreach (var collection in _Collections)
-                await collection.Value.FlushAsync();
+            await ForEachOpenAsync(collection => collection.FlushAsync());
         }
 
         /// <summary>
-        /// Performs a blocking flush and closes all open database collections.
+        /// Performs a blocking flush and closes all open database collections, including any a failed Delete() left
+        /// open.
         /// </summary>
         public void Close()
         {
-            if (!IsClosed)
-            {
-                IsClosed = true;
-                foreach (var collection in _Collections)
-                    collection.Value.Close();
-                _Collections.Clear();
-                _CollectionNames.Clear();
-                _CollectionLocks.Clear();
-            }
+            MarkClosed();
+            ReleaseCollections(collection => collection.Close(false));
         }
 
         /// <summary>
-        /// Performs an asynchronous blocking flush and closes all open database collections.
+        /// Performs an asynchronous blocking flush and closes all open database collections, including any a failed
+        /// Delete() left open.
         /// </summary>
-
         public async Task CloseAsync()
         {
-            if (!IsClosed)
-            {
-                IsClosed = true;
-                foreach (var collection in _Collections)
-                    await collection.Value.CloseAsync();
-                _Collections.Clear();
-                _CollectionNames.Clear();
-                _CollectionLocks.Clear();
-            }
+            MarkClosed();
+            await ReleaseCollectionsAsync(collection => collection.CloseAsync(false));
         }
 
         /// <summary>
-        /// Deletes all open database collections.
+        /// Deletes all open database collections. A collection that can't be deleted, such as one opened read-only,
+        /// stays open until Close().
         /// </summary>
         public void Delete()
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.DatabaseReadOnly(Name);
 
-            IsClosed = true;
-            foreach (var collection in _Collections)
-                collection.Value.Delete();
+            MarkClosed();
+            ReleaseCollections(collection => collection.Delete(false));
         }
 
         /// <summary>
-        /// Deletes all open database collections.
+        /// Deletes all open database collections. A collection that can't be deleted, such as one opened read-only,
+        /// stays open until Close().
         /// </summary>
         public async Task DeleteAsync()
         {
             if (IsClosed)
                 throw ThrowHelper.DatabaseClosed(Name);
+            if (Options.IsReadOnlyEnabled)
+                throw ThrowHelper.DatabaseReadOnly(Name);
 
-            IsClosed = true;
-            foreach (var collection in _Collections)
-                await collection.Value.DeleteAsync();
+            MarkClosed();
+            await ReleaseCollectionsAsync(collection => collection.DeleteAsync(false));
+        }
+
+        // closes or deletes every open collection even if one fails, then rethrows the first failure. Each collection
+        // forgets itself once it's closed, so one that refused stays open.
+        private void ReleaseCollections(Action<IFastDBCollection> release)
+        {
+            ExceptionDispatchInfo error = null;
+            foreach (IFastDBCollection collection in _Collections.Values)
+            {
+                try
+                {
+                    release(collection);
+                }
+                catch (Exception ex)
+                {
+                    error ??= ExceptionDispatchInfo.Capture(ex);
+                }
+            }
+
+            error?.Throw();
+        }
+
+        private async Task ReleaseCollectionsAsync(Func<IFastDBCollection, Task> release)
+        {
+            ExceptionDispatchInfo error = null;
+            foreach (IFastDBCollection collection in _Collections.Values)
+            {
+                try
+                {
+                    await release(collection);
+                }
+                catch (Exception ex)
+                {
+                    error ??= ExceptionDispatchInfo.Capture(ex);
+                }
+            }
+
+            error?.Throw();
         }
 
         /// <summary>
-        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records.
+        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records. A
+        /// collection holding records that couldn't be read when it was opened can't be compacted, and is skipped.
         /// </summary>
         public void Compact()
         {
@@ -340,12 +459,21 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.DatabaseReadOnly(Name);
 
-            foreach (var collection in _Collections)
-                collection.Value.Compact();
+            ForEachOpen(static collection =>
+            {
+                try
+                {
+                    collection.Compact();
+                }
+                catch (CompactionBlockedException)
+                {
+                }
+            });
         }
 
         /// <summary>
-        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records.
+        /// Compacts all open database collections, reclaiming the space held by overwritten and removed records. A
+        /// collection holding records that couldn't be read when it was opened can't be compacted, and is skipped.
         /// </summary>
         public async Task CompactAsync()
         {
@@ -354,8 +482,16 @@ namespace Stellar.Collections
             if (Options.IsReadOnlyEnabled)
                 throw ThrowHelper.DatabaseReadOnly(Name);
 
-            foreach (var collection in _Collections)
-                await collection.Value.CompactAsync();
+            await ForEachOpenAsync(static async collection =>
+            {
+                try
+                {
+                    await collection.CompactAsync();
+                }
+                catch (CompactionBlockedException)
+                {
+                }
+            });
         }
 
         /// <summary>
@@ -368,8 +504,7 @@ namespace Stellar.Collections
                 throw ThrowHelper.DatabaseClosed(Name);
 
             long sizeBytes = 0;
-            foreach (var collection in _Collections)
-                sizeBytes += collection.Value.GetSizeBytes();
+            ForEachOpen(collection => sizeBytes += collection.GetSizeBytes());
             return sizeBytes;
         }
 
@@ -378,8 +513,7 @@ namespace Stellar.Collections
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            if (!IsClosed)
-                await CloseAsync();
+            await CloseAsync();
         }
     }
 }

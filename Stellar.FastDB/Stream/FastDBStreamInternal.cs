@@ -51,7 +51,7 @@ namespace Stellar.Collections
             byte[] header = new byte[HeaderSize];
             Magic.CopyTo(header);
             BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(4), FormatVersion);
-            header[6] = (byte)Serializer;
+            header[6] = (byte)Options.Serializer;
             header[7] = (byte)_Format;
             if (Options.IsEncryptionEnabled)
             {
@@ -85,12 +85,12 @@ namespace Stellar.Collections
             if (Version != FormatVersion)
                 throw ThrowHelper.UnsupportedFileVersion(FilePath, Version);
 
-            Serializer = (SerializerType)header[6];
             _Format = (FormatType)header[7];
 
+            // the file's settings win over the ones it was opened with
             Options = new FastDBOptions(Options)
             {
-                Serializer = Serializer,
+                Serializer = (SerializerType)header[6],
                 IsCompressionEnabled = _Format.HasFlag(FormatType.Compressed),
                 IsEncryptionEnabled = _Format.HasFlag(FormatType.Encrypted),
             };
@@ -148,11 +148,11 @@ namespace Stellar.Collections
         private int WriteGap(long start, long size)
         {
             uint sequence = _GapSequence + 1;
-            byte[] slot = new byte[GapSlotSize];
+            Span<byte> slot = stackalloc byte[GapSlotSize];
             BinaryPrimitives.WriteInt64LittleEndian(slot, start);
-            BinaryPrimitives.WriteInt64LittleEndian(slot.AsSpan(8), size);
-            BinaryPrimitives.WriteUInt32LittleEndian(slot.AsSpan(16), sequence);
-            BinaryPrimitives.WriteUInt32LittleEndian(slot.AsSpan(20), Crc32.HashToUInt32(slot.AsSpan(0, GapSlotSize - CrcSize)));
+            BinaryPrimitives.WriteInt64LittleEndian(slot.Slice(8), size);
+            BinaryPrimitives.WriteUInt32LittleEndian(slot.Slice(16), sequence);
+            BinaryPrimitives.WriteUInt32LittleEndian(slot.Slice(20), Crc32.HashToUInt32(slot.Slice(0, GapSlotSize - CrcSize)));
 
             int offset = GapSlotOffset + (int)(sequence % 2) * GapSlotSize;
             RandomAccess.Write(_Handle, slot, offset);

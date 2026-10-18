@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Hashing;
@@ -31,6 +32,15 @@ namespace Stellar.Collections
             public ExceptionDispatchInfo Error;
         }
 
+        // what loading could read of a record that failed to deserialize, when DeserializationFailureBehavior lets it
+        // carry on
+        private enum LoadOutcome : byte
+        {
+            Read,
+            KeyOnly,                                // the value failed, but the key could be read on its own
+            Unreadable,                             // not even the key could be read
+        }
+
         private struct LoadRecord
         {
             public long Position;                   // file offset of the content
@@ -38,7 +48,7 @@ namespace Stellar.Collections
             public int Length;
             public int BlockOffset;
             public RecordType Type;
-            public bool Skipped;                    // failed to deserialize, and failures aren't errors
+            public LoadOutcome Outcome;
             public TKey Key;
             public TValue Value;
         }
@@ -302,14 +312,16 @@ namespace Stellar.Collections
             for (int i = 0; i < batch.Count; i++)
             {
                 ref LoadRecord record = ref batch.Records[i];
+                ReadOnlyMemory<byte> content = default;     // the plain content, once it's decrypted
                 try
                 {
-                    ReadOnlyMemory<byte> content = new ReadOnlyMemory<byte>(batch.Data, record.Offset, record.Length);
-                    if (batch.Decryptor != null)
+                    if (batch.Decryptor == null)
+                        content = new ReadOnlyMemory<byte>(batch.Data, record.Offset, record.Length);
+                    else
                     {
                         if (batch.Plain == null || batch.Plain.Length < record.Length)
                             batch.Plain = new byte[Math.Max(record.Length, 4096)];
-                        if (!batch.Decryptor.TryDecryptCbc(content.Span, batch.IV, batch.Plain, out int plainLength))
+                        if (!batch.Decryptor.TryDecryptCbc(batch.Data.AsSpan(record.Offset, record.Length), batch.IV, batch.Plain, out int plainLength))
                             throw ThrowHelper.DecryptionFailed();
                         content = new ReadOnlyMemory<byte>(batch.Plain, 0, plainLength);
                     }
@@ -318,7 +330,7 @@ namespace Stellar.Collections
                         (record.Key, record.Value) = Deserialize(content);
                     else
                         record.Key = DeserializeKey(content);
-                    record.Skipped = false;
+                    record.Outcome = LoadOutcome.Read;
                 }
                 catch (Exception ex)
                 {
@@ -328,7 +340,12 @@ namespace Stellar.Collections
                         batch.Error = ExceptionDispatchInfo.Capture(ex);
                         return;
                     }
-                    record.Skipped = true;
+
+                    // a value that no longer fits its type usually leaves the key readable; a tombstone is only its key
+                    record.Value = default;
+                    record.Outcome = LoadOutcome.Unreadable;
+                    if (record.Type == RecordType.Put && !content.IsEmpty && TryDeserializeKeyOnly(content, out record.Key))
+                        record.Outcome = LoadOutcome.KeyOnly;
                 }
             }
         }
@@ -338,18 +355,34 @@ namespace Stellar.Collections
             for (int i = 0; i < batch.Failed; i++)
             {
                 ref LoadRecord record = ref batch.Records[i];
-                if (record.Skipped)
+                if (record.Outcome == LoadOutcome.Unreadable)
+                {
+                    // with no key, the record can't be indexed, so compaction stays off rather than move or drop it
+                    _UnreadableRecords++;
                     continue;
+                }
 
                 if (record.Type == RecordType.Put)
                 {
+                    // a record whose value can't be read is still the key's latest, so it stays in the file and the
+                    // key's older value doesn't come back in memory
                     TrackPut(record.Key, record.Position, record.Length, record.BlockOffset);
-                    _Values[record.Key] = record.Value;
+                    if (record.Outcome == LoadOutcome.KeyOnly)
+                    {
+                        _Values.TryRemove(record.Key, out _);
+                        (_KeysWithoutValues ??= new HashSet<TKey>()).Add(record.Key);
+                    }
+                    else
+                    {
+                        _Values[record.Key] = record.Value;
+                        _KeysWithoutValues?.Remove(record.Key);
+                    }
                 }
                 else
                 {
                     TrackRemove(record.Key, record.Position, record.Length, record.BlockOffset);
                     _Values.TryRemove(record.Key, out _);
+                    _KeysWithoutValues?.Remove(record.Key);
                 }
             }
 

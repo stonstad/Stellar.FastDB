@@ -1,7 +1,9 @@
 ﻿using MessagePack;
+using MessagePack.Formatters;
 using System;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Stellar.Collections
 {
@@ -26,7 +28,7 @@ namespace Stellar.Collections
             if (Options.IsEncryptionEnabled)
                 EncryptRecord(writer, start);
 
-            Debug.Assert(writer.Length > start, $"Failure serializing type ({nameof(TKey)},{nameof(TValue)})");
+            Debug.Assert(writer.Length > start, $"Failure serializing type ({typeof(TKey).Name},{typeof(TValue).Name})");
         }
 
         // appends one key's content to writer
@@ -48,7 +50,7 @@ namespace Stellar.Collections
             if (Options.IsEncryptionEnabled)
                 EncryptRecord(writer, start);
 
-            Debug.Assert(writer.Length > start, $"Failure serializing type ({nameof(TKey)})");
+            Debug.Assert(writer.Length > start, $"Failure serializing type ({typeof(TKey).Name})");
         }
 
         // content is already decrypted
@@ -79,5 +81,55 @@ namespace Stellar.Collections
             else
                 throw new NotImplementedException();
         }
+
+        // for a record whose value failed to deserialize: reads just its key, skipping the value without decoding it,
+        // so the record can still be indexed under its key; content is already decrypted
+        private bool TryDeserializeKeyOnly(ReadOnlyMemory<byte> content, out TKey key)
+        {
+            try
+            {
+                if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
+                    key = MessagePackSerializer.Deserialize<(TKey, SkippedValue)>(content, _KeyOnlyMessagePackOptions).Item1;
+                else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
+                    key = JsonSerializer.Deserialize<KeyOnly>(content.Span, _JsonSerializerOptions).K;
+                else
+                    throw new NotImplementedException();
+                return true;
+            }
+            catch
+            {
+                key = default;
+                return false;
+            }
+        }
+
+        // a JSON record's key alone; K is required, so a record without one isn't taken for the default key
+        private struct KeyOnly
+        {
+            [JsonRequired]
+            public TKey K { get; set; }
+        }
+
+        private struct SkippedValue
+        {
+        }
+
+        // reads past a MessagePack value without decoding it. It's handed to a CompositeResolver directly, so the source
+        // generator, which can't use a type nested in a generic class, is kept away from it.
+#pragma warning disable MsgPack010 // Formatter should be declared with at least internal visibility
+        private sealed class SkipFormatter : IMessagePackFormatter<SkippedValue>
+        {
+            public void Serialize(ref MessagePackWriter writer, SkippedValue value, MessagePackSerializerOptions options)
+            {
+                throw new NotSupportedException();
+            }
+
+            public SkippedValue Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
+            {
+                reader.Skip();
+                return default;
+            }
+        }
+#pragma warning restore MsgPack010
     }
 }

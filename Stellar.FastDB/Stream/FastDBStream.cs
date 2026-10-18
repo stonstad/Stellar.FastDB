@@ -1,4 +1,5 @@
 ﻿using MessagePack;
+using MessagePack.Formatters;
 using MessagePack.Resolvers;
 using Microsoft.Win32.SafeHandles;
 using System;
@@ -19,16 +20,20 @@ namespace Stellar.Collections
         public FastDBOptions Options { get; private set; }
         public ushort Version { get; private set; } = FormatVersion;
         public string FilePath { get; private set; }
-        public SerializerType Serializer { get; set; }
         public bool IsEncrypted => _Format.HasFlag(FormatType.Encrypted);
         public bool IsCompressed => _Format.HasFlag(FormatType.Compressed);
         private FormatType _Format;
 
         private SafeFileHandle _Handle;
-        private SafeFileHandle _FlushHandle;    // Windows only: flushes to disk, so they don't hold up writes on _Handle
+        private SafeFileHandle _FlushHandle;    // Windows only, null elsewhere: flushes to disk, so they don't hold up writes on _Handle
         private ConcurrentDictionary<TKey, TValue> _Values;
 
+        // keys whose latest record is in the file but whose value couldn't be read at load, so they're missing from
+        // _Values; removing one still writes its tombstone. Under _StreamLock, or loading; null while there are none.
+        private HashSet<TKey> _KeysWithoutValues;
+
         private MessagePackSerializerOptions _MessagePackOptions;
+        private MessagePackSerializerOptions _KeyOnlyMessagePackOptions;    // reads a record's key and skips its value
         private JsonSerializerOptions _JsonSerializerOptions;
         private JsonWriterOptions _JsonWriterOptions;
 
@@ -38,15 +43,29 @@ namespace Stellar.Collections
         private readonly object _StreamLock = new object();
 #endif
 
-        public FastDBStream(FastDBOptions options)
+        private readonly string _CollectionName;
+        private bool _Closed;                   // set under _StreamLock by EndWrites() or Dispose() before the last commit, so no write follows it
+
+        public FastDBStream(string collectionName, string filePath, FastDBOptions options)
         {
+            _CollectionName = collectionName;
+            FilePath = filePath;
             Options = options;
         }
 
-        public FastDBStream(string filePath, FastDBOptions options)
+        // caller holds _StreamLock
+        private void ThrowIfClosed()
         {
-            FilePath = filePath;
-            Options = options;
+            if (_Closed)
+                throw ThrowHelper.CollectionClosed(_CollectionName);
+        }
+
+        // after a serialization failure: serializing runs outside _StreamLock, so Dispose() can release the encryptors
+        // under it, and then the failure is the close, reported as such
+        private void ThrowIfClosedWhileSerializing()
+        {
+            lock (_StreamLock)
+                ThrowIfClosed();
         }
 
         public ConcurrentDictionary<TKey, TValue> Load()
@@ -58,20 +77,19 @@ namespace Stellar.Collections
             }
 
             // Windows runs the operations on a handle one at a time, so a compaction flush on _Handle would hold up every
-            // write meanwhile; flushes get a handle of their own. Sharing writes but not reads still shuts out every other
-            // FastDB instance, as each one reads.
-            FileShare share = FileShare.None;
-            if (OperatingSystem.IsWindows() && !Options.IsReadOnlyEnabled)
-                share = FileShare.Write;
+            // write meanwhile; flushes get a handle of their own. Elsewhere fsync on _Handle doesn't block other
+            // operations, so _FlushHandle stays null. Sharing writes but not reads still shuts out every other FastDB
+            // instance, as each one reads.
+            bool useFlushHandle = OperatingSystem.IsWindows() && !Options.IsReadOnlyEnabled;
 
             if (Options.IsReadOnlyEnabled)
                 _Handle = File.OpenHandle(FilePath, FileMode.Open, FileAccess.Read, FileShare.None);
             else
-                _Handle = File.OpenHandle(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, share);
+                _Handle = File.OpenHandle(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, useFlushHandle ? FileShare.Write : FileShare.None);
 
             try
             {
-                if (share == FileShare.Write)
+                if (useFlushHandle)
                     _FlushHandle = File.OpenHandle(FilePath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
 
                 lock (_StreamLock)
@@ -79,7 +97,6 @@ namespace Stellar.Collections
                     if (RandomAccess.GetLength(_Handle) == 0)
                     {
                         _Values = new ConcurrentDictionary<TKey, TValue>();
-                        Serializer = Options.Serializer;
                         InitializeStream();
                         InitializeEncryption();
                         if (!Options.IsReadOnlyEnabled)
@@ -107,6 +124,7 @@ namespace Stellar.Collections
                 _FlushHandle = null;
                 _Handle.Dispose();
                 _Handle = null;
+                DisposeEncryption();
                 throw;
             }
 
@@ -115,31 +133,21 @@ namespace Stellar.Collections
 
         private void InitializeStream()
         {
-            if (Options.Serializer == SerializerType.MessagePack_Contractless)
+            if (Options.Serializer == SerializerType.MessagePack_Contractless || Options.Serializer == SerializerType.MessagePack_Contract)
             {
-                if (Options.MessagePackOptions == null)
-                    _MessagePackOptions = ContractlessStandardResolver.Options;
+                if (Options.Serializer == SerializerType.MessagePack_Contract)
+                    _MessagePackOptions = Options.MessagePackOptions ?? StandardResolver.Options;
                 else
-                    _MessagePackOptions = Options.MessagePackOptions;
+                    _MessagePackOptions = Options.MessagePackOptions ?? ContractlessStandardResolver.Options;
 
                 if (Options.IsCompressionEnabled)
                 {
                     _MessagePackOptions = _MessagePackOptions.WithCompression(MessagePackCompression.Lz4BlockArray);
                     _Format |= FormatType.Compressed;
                 }
-            }
-            else if (Options.Serializer == SerializerType.MessagePack_Contract)
-            {
-                if (Options.MessagePackOptions == null)
-                    _MessagePackOptions = StandardResolver.Options;
-                else
-                    _MessagePackOptions = Options.MessagePackOptions;
 
-                if (Options.IsCompressionEnabled)
-                {
-                    _MessagePackOptions = _MessagePackOptions.WithCompression(MessagePackCompression.Lz4BlockArray);
-                    _Format |= FormatType.Compressed;
-                }
+                IFormatterResolver keyOnly = CompositeResolver.Create(new IMessagePackFormatter[] { new SkipFormatter() }, new IFormatterResolver[] { _MessagePackOptions.Resolver });
+                _KeyOnlyMessagePackOptions = _MessagePackOptions.WithResolver(keyOnly);
             }
             else if (Options.Serializer == SerializerType.SystemTextJson_JSON)
             {
@@ -171,23 +179,21 @@ namespace Stellar.Collections
 
         public void ValidateEncryption()
         {
-            if (Options.IsEncryptionEnabled)
+            if (!Options.IsEncryptionEnabled)
+                return;
+
+            byte[] decryptedChecksum;
+            try
             {
-                try
-                {
-                    byte[] decryptedChecksum = Decrypt(_EncryptionChecksum);
-                    if (decryptedChecksum.Length != 2 ||
-                        decryptedChecksum[0] != _EncryptionSalt[0] ||
-                        decryptedChecksum[1] != _EncryptionSalt[1])
-                    {
-                        throw ThrowHelper.DecryptionFailed();
-                    }
-                }
-                catch
-                {
-                    throw ThrowHelper.DecryptionFailed();
-                }
+                decryptedChecksum = Decrypt(_EncryptionChecksum);
             }
+            catch
+            {
+                throw ThrowHelper.DecryptionFailed();
+            }
+
+            if (decryptedChecksum.Length != 2 || decryptedChecksum[0] != _EncryptionSalt[0] || decryptedChecksum[1] != _EncryptionSalt[1])
+                throw ThrowHelper.DecryptionFailed();
         }
 
         public bool Add(TKey key, TValue value)
@@ -222,7 +228,7 @@ namespace Stellar.Collections
 
         private bool Put(TKey key, TValue value, PutMode mode)
         {
-            if (_Handle != null && Options.Durability == DurabilityMode.Buffered)
+            if (MustWaitForBufferSpace)
                 WaitForBufferSpace();
 
             if (!TryPut(key, value, mode, out long sequence))
@@ -235,16 +241,12 @@ namespace Stellar.Collections
         {
             try
             {
-                if (_Handle != null && Options.Durability == DurabilityMode.Buffered && !HasBufferSpace())
+                if (MustWaitForBufferSpace)
                     return PutAfterBufferSpaceAsync(key, value, mode);
 
                 if (!TryPut(key, value, mode, out long sequence))
                     return new ValueTask<bool>(false);
-
-                CommitWaiter waiter = CompleteOrWait(sequence, out bool succeeded);
-                if (waiter == null)
-                    return new ValueTask<bool>(succeeded);
-                return new ValueTask<bool>(waiter, waiter.Version);
+                return CompleteAsync(sequence);
             }
             catch (Exception ex)
             {
@@ -267,32 +269,40 @@ namespace Stellar.Collections
             if (!TrySerialize(key, value, out PooledBufferWriter content))
                 return false;
 
+            // an upsert writes whether or not the key exists, so it skips the lookup
+            bool upsert = mode == PutMode.AddOrUpdate || (mode == PutMode.Add && Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Upsert);
+
             try
             {
                 lock (_StreamLock)
                 {
-                    if (_Values.ContainsKey(key))
+                    ThrowIfClosed();
+                    if (!upsert)
                     {
-                        if (mode == PutMode.Add && Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Exception)
-                            throw ThrowHelper.DuplicateKey(key);
-                        if (mode == PutMode.Add && Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.ReturnFalse)
+                        bool exists = _Values.ContainsKey(key);
+                        if (mode == PutMode.Add && exists)
+                        {
+                            if (Options.AddDuplicateKeyBehavior == DuplicateKeyBehaviorType.Exception)
+                                throw ThrowHelper.DuplicateKey(key);
                             return false;
-                    }
-                    else if (mode == PutMode.Update)
-                    {
-                        if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
-                            throw ThrowHelper.KeyNotFound(key);
-                        return false;
+                        }
+                        if (mode == PutMode.Update && !exists)
+                        {
+                            if (Options.UpdateKeyNotFoundBehavior == ErrorBehaviorType.Exception)
+                                throw ThrowHelper.KeyNotFound(key);
+                            return false;
+                        }
                     }
 
                     if (content != null)
                     {
+                        long bytes = _Pending.Bytes;
                         Append(RecordType.Put, key, content.WrittenSpan);
-                        sequence = _Sequence;
-                        _Pending.Operations++;
+                        sequence = EndWrite(bytes);
                     }
 
                     _Values[key] = value;
+                    _KeysWithoutValues?.Remove(key);
                     return true;
                 }
             }
@@ -304,7 +314,7 @@ namespace Stellar.Collections
 
         public bool AddBulk(IDictionary<TKey, TValue> dictionary)
         {
-            if (_Handle != null && Options.Durability == DurabilityMode.Buffered)
+            if (MustWaitForBufferSpace)
                 WaitForBufferSpace();
 
             if (!TryPutBulk(dictionary, out long sequence))
@@ -316,16 +326,12 @@ namespace Stellar.Collections
         {
             try
             {
-                if (_Handle != null && Options.Durability == DurabilityMode.Buffered && !HasBufferSpace())
+                if (MustWaitForBufferSpace)
                     return AddBulkAfterBufferSpaceAsync(dictionary);
 
                 if (!TryPutBulk(dictionary, out long sequence))
                     return new ValueTask<bool>(false);
-
-                CommitWaiter waiter = CompleteOrWait(sequence, out bool succeeded);
-                if (waiter == null)
-                    return new ValueTask<bool>(succeeded);
-                return new ValueTask<bool>(waiter, waiter.Version);
+                return CompleteAsync(sequence);
             }
             catch (Exception ex)
             {
@@ -371,6 +377,7 @@ namespace Stellar.Collections
 
                 lock (_StreamLock)
                 {
+                    ThrowIfClosed();
                     if (Options.BulkAddDuplicateKeyBehavior != DuplicateKeyBehaviorType.Upsert)
                     {
                         for (int i = 0; i < count; i++)
@@ -386,19 +393,26 @@ namespace Stellar.Collections
 
                     if (chunks != null && count > 0)
                     {
-                        for (int i = 0; i < count; i++)
+                        long bytes = _Pending.Bytes;
+                        for (int chunk = 0; chunk < chunkCount; chunk++)
                         {
+                            ReadOnlySpan<byte> contents = chunks[chunk].WrittenSpan;
                             int start = 0;
-                            if (i % chunkSize != 0)
-                                start = ends[i - 1];
-                            Append(RecordType.Put, items[i].Key, chunks[i / chunkSize].WrittenSpan.Slice(start, ends[i] - start));
+                            int end = Math.Min(count, (chunk + 1) * chunkSize);
+                            for (int i = chunk * chunkSize; i < end; i++)
+                            {
+                                Append(RecordType.Put, items[i].Key, contents.Slice(start, ends[i] - start));
+                                start = ends[i];
+                            }
                         }
-                        sequence = _Sequence;
-                        _Pending.Operations++;
+                        sequence = EndWrite(bytes);
                     }
 
                     for (int i = 0; i < count; i++)
+                    {
                         _Values[items[i].Key] = items[i].Value;
+                        _KeysWithoutValues?.Remove(items[i].Key);
+                    }
                     return true;
                 }
             }
@@ -424,7 +438,7 @@ namespace Stellar.Collections
 
         public bool Remove(TKey key, out TValue value)
         {
-            if (_Handle != null && Options.Durability == DurabilityMode.Buffered)
+            if (MustWaitForBufferSpace)
                 WaitForBufferSpace();
 
             if (!TryRemove(key, out value, out long sequence))
@@ -436,16 +450,12 @@ namespace Stellar.Collections
         {
             try
             {
-                if (_Handle != null && Options.Durability == DurabilityMode.Buffered && !HasBufferSpace())
+                if (MustWaitForBufferSpace)
                     return RemoveAfterBufferSpaceAsync(key);
 
                 if (!TryRemove(key, out _, out long sequence))
                     return new ValueTask<bool>(false);
-
-                CommitWaiter waiter = CompleteOrWait(sequence, out bool succeeded);
-                if (waiter == null)
-                    return new ValueTask<bool>(succeeded);
-                return new ValueTask<bool>(waiter, waiter.Version);
+                return CompleteAsync(sequence);
             }
             catch (Exception ex)
             {
@@ -472,7 +482,8 @@ namespace Stellar.Collections
             {
                 lock (_StreamLock)
                 {
-                    if (!_Values.TryRemove(key, out value))
+                    ThrowIfClosed();
+                    if (!_Values.TryRemove(key, out value) && !RemoveKeyWithoutValue(key))
                     {
                         if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                             throw ThrowHelper.KeyNotFound(key);
@@ -481,9 +492,9 @@ namespace Stellar.Collections
 
                     if (content != null)
                     {
+                        long bytes = _Pending.Bytes;
                         Append(RecordType.Remove, key, content.WrittenSpan);
-                        sequence = _Sequence;
-                        _Pending.Operations++;
+                        sequence = EndWrite(bytes);
                     }
                     return true;
                 }
@@ -496,7 +507,7 @@ namespace Stellar.Collections
 
         public void RemoveBulk(IEnumerable<TKey> keys)
         {
-            if (_Handle != null && Options.Durability == DurabilityMode.Buffered)
+            if (MustWaitForBufferSpace)
                 WaitForBufferSpace();
 
             TryRemoveBulk(keys, out long sequence);
@@ -507,7 +518,7 @@ namespace Stellar.Collections
         {
             try
             {
-                if (_Handle != null && Options.Durability == DurabilityMode.Buffered && !HasBufferSpace())
+                if (MustWaitForBufferSpace)
                     return RemoveBulkAfterBufferSpaceAsync(keys);
 
                 TryRemoveBulk(keys, out long sequence);
@@ -547,27 +558,29 @@ namespace Stellar.Collections
 
                 lock (_StreamLock)
                 {
+                    ThrowIfClosed();
                     if (Options.RemoveKeyNotFoundBehavior == ErrorBehaviorType.Exception)
                     {
                         foreach (TKey key in items)
-                            if (!_Values.ContainsKey(key))
+                            if (!_Values.ContainsKey(key) && _KeysWithoutValues?.Contains(key) != true)
                                 throw ThrowHelper.KeyNotFound(key);
                     }
 
+                    long bytes = _Pending.Bytes;
                     for (int i = 0; i < items.Count; i++)
                     {
-                        if (_Values.TryRemove(items[i], out _) && contents != null)
+                        if ((_Values.TryRemove(items[i], out _) || RemoveKeyWithoutValue(items[i])) && contents != null)
                         {
                             int start = 0;
                             if (i > 0)
                                 start = ends[i - 1];
                             Append(RecordType.Remove, items[i], contents.WrittenSpan.Slice(start, ends[i] - start));
-                            sequence = _Sequence;
                         }
                     }
 
-                    if (sequence != 0)
-                        _Pending.Operations++;
+                    // every record takes at least 2 bytes, so a change in bytes means something was appended
+                    if (_Pending.Bytes != bytes)
+                        sequence = EndWrite(bytes);
                     return true;
                 }
             }
@@ -577,6 +590,13 @@ namespace Stellar.Collections
                 if (ends != null)
                     ArrayPool<int>.Shared.Return(ends);
             }
+        }
+
+        // caller holds _StreamLock: forgets a key whose value couldn't be read, returning whether it was one, so its
+        // removal still writes a tombstone
+        private bool RemoveKeyWithoutValue(TKey key)
+        {
+            return _KeysWithoutValues != null && _KeysWithoutValues.Remove(key);
         }
 
         // content is null when there is no file to write to; the caller releases it
@@ -596,6 +616,7 @@ namespace Stellar.Collections
             {
                 content.Release();
                 content = null;
+                ThrowIfClosedWhileSerializing();
                 if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
                     throw;
                 return false;
@@ -620,6 +641,7 @@ namespace Stellar.Collections
                 }
                 catch
                 {
+                    ThrowIfClosedWhileSerializing();
                     if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
                         throw;
                     return false;
@@ -646,6 +668,7 @@ namespace Stellar.Collections
             {
                 if (error == null)
                     continue;
+                ThrowIfClosedWhileSerializing();
                 if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
                     ExceptionDispatchInfo.Capture(error).Throw();
                 return false;
@@ -679,6 +702,7 @@ namespace Stellar.Collections
             {
                 content.Release();
                 content = null;
+                ThrowIfClosedWhileSerializing();
                 if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
                     throw;
                 return false;
@@ -702,6 +726,7 @@ namespace Stellar.Collections
             {
                 contents.Release();
                 contents = null;
+                ThrowIfClosedWhileSerializing();
                 if (Options.SerializationFailureBehavior == ErrorBehaviorType.Exception)
                     throw;
                 return false;
@@ -733,9 +758,9 @@ namespace Stellar.Collections
                 throw ThrowHelper.WriteFailed(FilePath, error);
         }
 
-        public async Task FlushAsync()
+        public Task FlushAsync()
         {
-            await Task.Run(() => Flush());
+            return Task.Run(Flush);
         }
 
         public void Clear()
@@ -745,6 +770,8 @@ namespace Stellar.Collections
             {
                 lock (_StreamLock)
                 {
+                    ThrowIfClosed();
+
                     // writes still waiting to be written are discarded along with everything else
                     Batch batch = _Pending;
                     if (batch.Records.Count > 0)
@@ -756,6 +783,7 @@ namespace Stellar.Collections
                     _UnreportedError = null;
 
                     _Values.Clear();
+                    _KeysWithoutValues = null;
                     ResetIndex();
                     _Sweeping = false;
                     _SweepBudget = 0;
@@ -781,6 +809,14 @@ namespace Stellar.Collections
                 SignalSpaceFreed();
         }
 
+        // refuses writes from now on, so a Flush() that follows writes, and reports the failure of, every write the
+        // stream took; a buffered write's failure in Dispose() has nothing to report it
+        public void EndWrites()
+        {
+            lock (_StreamLock)
+                _Closed = true;
+        }
+
         public void Delete()
         {
             Dispose();
@@ -792,7 +828,7 @@ namespace Stellar.Collections
         {
             Dispose();
             if (FilePath != null)
-                await Task.Run(() => File.Delete(FilePath));
+                await Task.Run(() => File.Delete(FilePath)).ConfigureAwait(false);
         }
 
         public void Dispose()
@@ -800,6 +836,9 @@ namespace Stellar.Collections
             lock (_SweepLock)
             lock (_CommitLock)
             {
+                // writers check this under _StreamLock, so none appends after it and the commits below write them all
+                EndWrites();
+
                 if (_Handle != null)
                 {
                     while (CommitPending())

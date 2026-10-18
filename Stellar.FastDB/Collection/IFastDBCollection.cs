@@ -13,17 +13,6 @@ namespace Stellar.Collections
     public interface IFastDBCollection
     {
         /// <summary>
-        /// Loads all elements in the database collection.
-        /// </summary>
-
-        void Load();
-
-        /// <summary>
-        /// Loads all elements in the database collection.
-        /// </summary>
-        Task LoadAsync();
-
-        /// <summary>
         /// Removes all elements from the database collection.
         /// </summary>
         /// <summary>
@@ -40,24 +29,28 @@ namespace Stellar.Collections
         Task FlushAsync();
 
         /// <summary>
-        /// Performs a blocking flush and closes all open database collections.
+        /// Performs a blocking flush and closes the database collection.
         /// </summary>
-        void Close();
+        /// <param name="throwIfClosed">Whether a collection that's already closed throws; if false, it's left as it is.</param>
+        void Close(bool throwIfClosed = true);
 
         /// <summary>
-        /// Performs an asynchronous blocking flush and closes all open database collections.
+        /// Performs an asynchronous blocking flush and closes the database collection.
         /// </summary>
-        Task CloseAsync();
-
-        /// <summary>
-        /// Deletes the database collection.
-        /// </summary>
-        void Delete();
+        /// <param name="throwIfClosed">Whether a collection that's already closed throws; if false, it's left as it is.</param>
+        Task CloseAsync(bool throwIfClosed = true);
 
         /// <summary>
         /// Deletes the database collection.
         /// </summary>
-        Task DeleteAsync();
+        /// <param name="throwIfClosed">Whether a collection that's already closed throws; if false, it's left as it is.</param>
+        void Delete(bool throwIfClosed = true);
+
+        /// <summary>
+        /// Deletes the database collection.
+        /// </summary>
+        /// <param name="throwIfClosed">Whether a collection that's already closed throws; if false, it's left as it is.</param>
+        Task DeleteAsync(bool throwIfClosed = true);
 
         /// <summary>
         /// Rewrites the collection file with only its live records, reclaiming the space held by overwritten and
@@ -81,6 +74,12 @@ namespace Stellar.Collections
         /// Returns the number of records existing in the database collection.
         /// </summary>
         int Count { get; }
+
+        /// <summary>
+        /// Specifies whether the database collection is closed, by Close() or Delete() on it or on its database. A closed
+        /// collection stays closed; get the collection from the database again to reopen it.
+        /// </summary>
+        bool IsClosed { get; }
     }
 
     /// <summary>Represents a thread-safe collection of keys and values persisted to the file system.</summary>

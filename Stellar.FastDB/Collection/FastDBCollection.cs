@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -23,34 +24,19 @@ namespace Stellar.Collections
 
         private FastDBStream<TKey, TValue> _FastDBStream;
         private bool _WriteToFileSystem => !Options.IsMemoryOnlyEnabled;
-        private bool _IsLoaded = false;
+        private readonly FastDB _Owner;         // forgets this collection once it's closed or deleted
 
-        public FastDBCollection(string name, FastDBOptions options)
+        public FastDBCollection(FastDB owner, string name, FastDBOptions options)
         {
+            _Owner = owner;
             Name = name;
             Options = options;
-
-            if (string.IsNullOrEmpty(name))
-            {
-                Name = typeof(TValue).Name;
-                if (Options.GeneratedFileNameCreationFunction != null)
-                    Name = Options.GeneratedFileNameCreationFunction(Name);
-            }
         }
 
-        /// <summary>
-        /// Reopens a FastDB collection instance that was previously closed.
-        /// This method should only be used if the collection has been explicitly closed earlier.
-        /// </summary>
-        public void Load()
+        // FastDB loads each collection once, under its name's lock, before anything else can reach it. A closed
+        // collection isn't loaded again: GetCollection() opens its name afresh.
+        internal void Load()
         {
-            if (_IsLoaded)
-                throw ThrowHelper.CollectionOpen(Name);
-            else
-                _IsLoaded = true;
-
-            IsClosed = false;
-
             string filePath = null;
             if (_WriteToFileSystem)
             {
@@ -60,303 +46,319 @@ namespace Stellar.Collections
                 filePath = Path.Combine(Options.DirectoryPath, $"{Name}.{Options.FileExtension}");
             }
 
-            _FastDBStream = new FastDBStream<TKey, TValue>(filePath, Options);
-            _Values = _FastDBStream.Load();
+            FastDBStream<TKey, TValue> stream = new FastDBStream<TKey, TValue>(Name, filePath, Options);
+            _Values = stream.Load();
+            _FastDBStream = stream;
         }
 
-        public async Task LoadAsync()
+        internal Task LoadAsync()
         {
-            await Task.Run(Load);
+            return Task.Run(Load);
+        }
+
+        // Close() or Delete() on another thread can release the values at any moment, so each call reads them once
+        private ConcurrentDictionary<TKey, TValue> OpenValues()
+        {
+            ConcurrentDictionary<TKey, TValue> values = _Values;
+            if (IsClosed || values == null)
+                throw ThrowHelper.CollectionClosed(Name);
+            return values;
+        }
+
+        // Close() or Delete() on another thread can release the stream at any moment, so each call reads it once. A
+        // write that reaches it after it's closed is refused by the stream itself. Async calls return the refusal in
+        // their task rather than throw it.
+        private bool TryOpenStream(bool write, out FastDBStream<TKey, TValue> stream, out Exception refusal)
+        {
+            stream = _FastDBStream;
+            refusal = null;
+            if (IsClosed || stream == null)
+                refusal = ThrowHelper.CollectionClosed(Name);
+            else if (write && Options.IsReadOnlyEnabled)
+                refusal = ThrowHelper.CollectionReadOnly(Name);
+            return refusal == null;
+        }
+
+        private FastDBStream<TKey, TValue> OpenStream(bool write = false)
+        {
+            if (!TryOpenStream(write, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                throw refusal;
+            return stream;
         }
 
         public void Clear()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            _FastDBStream.Clear();
+            OpenStream(write: true).Clear();
         }
 
         public void Flush()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            _FastDBStream.Flush();
+            OpenStream().Flush();
         }
 
-        public async Task FlushAsync()
+        public Task FlushAsync()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            await _FastDBStream.FlushAsync();
+            if (!TryOpenStream(false, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return Task.FromException(refusal);
+            return stream.FlushAsync();
         }
 
-        public void Close()
+        // FastDB passes throwIfClosed false when it closes or deletes every collection, skipping one closed on its own
+        // meanwhile
+        public void Close(bool throwIfClosed = true)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
+            Release(throwIfClosed, false, static stream =>
+            {
+                stream.EndWrites();
+                try
+                {
+                    // reports a failed buffered write; the file is closed either way
+                    stream.Flush();
+                }
+                finally
+                {
+                    stream.Dispose();
+                }
+            });
+        }
 
+        public Task CloseAsync(bool throwIfClosed = true)
+        {
+            return ReleaseAsync(throwIfClosed, false, static async stream =>
+            {
+                stream.EndWrites();
+                try
+                {
+                    // reports a failed buffered write; the file is closed either way
+                    await stream.FlushAsync().ConfigureAwait(false);
+                }
+                finally
+                {
+                    stream.Dispose();
+                }
+            });
+        }
+
+        public void Delete(bool throwIfClosed = true)
+        {
+            Release(throwIfClosed, true, static stream => stream.Delete());
+        }
+
+        public Task DeleteAsync(bool throwIfClosed = true)
+        {
+            return ReleaseAsync(throwIfClosed, true, static stream => stream.DeleteAsync());
+        }
+
+        // closes or deletes the stream under the lock FastDB opens this collection's name under, so GetCollection() waits
+        // for the file to close rather than return this collection or open the file a second time meanwhile
+        private void Release(bool throwIfClosed, bool write, Action<FastDBStream<TKey, TValue>> release)
+        {
+            _Owner.EnterName(Name);
+            try
+            {
+                FastDBStream<TKey, TValue> stream = BeginRelease(throwIfClosed, write);
+                if (stream == null)
+                    return;
+
+                try
+                {
+                    release(stream);
+                }
+                finally
+                {
+                    Unload();
+                }
+            }
+            finally
+            {
+                _Owner.ExitName(Name);
+            }
+        }
+
+        // the name lock is held across these awaits, so they don't resume on the caller's context: a thread that waits
+        // for the same lock there, in GetCollection(), would never let them finish
+        private async Task ReleaseAsync(bool throwIfClosed, bool write, Func<FastDBStream<TKey, TValue>, Task> release)
+        {
+            await _Owner.EnterNameAsync(Name).ConfigureAwait(false);
+            try
+            {
+                FastDBStream<TKey, TValue> stream = BeginRelease(throwIfClosed, write);
+                if (stream == null)
+                    return;
+
+                try
+                {
+                    await release(stream).ConfigureAwait(false);
+                }
+                finally
+                {
+                    Unload();
+                }
+            }
+            finally
+            {
+                _Owner.ExitName(Name);
+            }
+        }
+
+        // caller holds the name's lock: returns the stream to close or delete, or null if the collection is already
+        // closed and throwIfClosed is false. From here on the collection is closed, and its FastDB has forgotten it, so
+        // neither GetCollection() nor a database-wide call reaches it.
+        private FastDBStream<TKey, TValue> BeginRelease(bool throwIfClosed, bool write)
+        {
+            if (IsClosed && !throwIfClosed)
+                return null;
+
+            FastDBStream<TKey, TValue> stream = OpenStream(write);
             IsClosed = true;
-            _FastDBStream.Flush();
-            _FastDBStream.Dispose();
-            _FastDBStream = null;
-            _Values = null;
-            _IsLoaded = false;
+            _Owner.Forget(Name, this);
+            return stream;
         }
 
-        public async Task CloseAsync()
+        // caller holds the name's lock, after the stream is released
+        private void Unload()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            IsClosed = true;
-            await _FastDBStream.FlushAsync();
-            _FastDBStream.Dispose();
-            _FastDBStream = null;
-            _Values = null;
-            _IsLoaded = false;
-        }
-
-        public void Delete()
-        {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            _FastDBStream.Delete();
-            _FastDBStream = null;
-            _Values = null;
-        }
-
-        public async Task DeleteAsync()
-        {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            await _FastDBStream.DeleteAsync();
             _FastDBStream = null;
             _Values = null;
         }
 
         public bool Add(TKey key, TValue value)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            return _FastDBStream.Add(key, value);
+            return OpenStream(write: true).Add(key, value);
         }
 
         public ValueTask<bool> AddAsync(TKey key, TValue value)
         {
-            if (IsClosed)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.AddAsync(key, value);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException<bool>(refusal);
+            return stream.AddAsync(key, value);
         }
 
         public ValueTask<bool> AddBulkAsync(IDictionary<TKey, TValue> dictionary)
         {
-            if (IsClosed)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.AddBulkAsync(dictionary);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException<bool>(refusal);
+            return stream.AddBulkAsync(dictionary);
         }
 
         public bool Update(TKey key, TValue value)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            return _FastDBStream.Update(key, value);
+            return OpenStream(write: true).Update(key, value);
         }
 
         public ValueTask<bool> UpdateAsync(TKey key, TValue value)
         {
-            if (IsClosed)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.UpdateAsync(key, value);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException<bool>(refusal);
+            return stream.UpdateAsync(key, value);
         }
 
         public bool AddOrUpdate(TKey key, TValue value)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            return _FastDBStream.AddOrUpdate(key, value);
+            return OpenStream(write: true).AddOrUpdate(key, value);
         }
 
         public ValueTask<bool> AddOrUpdateAsync(TKey key, TValue value)
         {
-            if (IsClosed)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.AddOrUpdateAsync(key, value);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException<bool>(refusal);
+            return stream.AddOrUpdateAsync(key, value);
         }
 
         public bool Remove(TKey key, out TValue value)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            return _FastDBStream.Remove(key, out value);
+            return OpenStream(write: true).Remove(key, out value);
         }
 
         public ValueTask<bool> RemoveAsync(TKey key)
         {
-            if (IsClosed)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException<bool>(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.RemoveAsync(key);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException<bool>(refusal);
+            return stream.RemoveAsync(key);
         }
 
         public void RemoveBulk(IEnumerable<TKey> keys)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            _FastDBStream.RemoveBulk(keys);
+            OpenStream(write: true).RemoveBulk(keys);
         }
 
         public ValueTask RemoveBulkAsync(IEnumerable<TKey> keys)
         {
-            if (IsClosed)
-                return ValueTask.FromException(ThrowHelper.CollectionClosed(Name));
-            if (Options.IsReadOnlyEnabled)
-                return ValueTask.FromException(ThrowHelper.CollectionReadOnly(Name));
-
-            return _FastDBStream.RemoveBulkAsync(keys);
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return ValueTask.FromException(refusal);
+            return stream.RemoveBulkAsync(keys);
         }
 
         public bool TryGet(TKey key, out TValue value)
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            return _Values.TryGetValue(key, out value);
+            return OpenValues().TryGetValue(key, out value);
         }
 
         public TValue this[TKey key]
         {
             get
             {
-                if (IsClosed)
-                    throw ThrowHelper.CollectionClosed(Name);
-                return _Values[key];
-
+                return OpenValues()[key];
             }
             set
             {
-                if (IsClosed)
-                    throw ThrowHelper.CollectionClosed(Name);
-                if (Options.IsReadOnlyEnabled)
-                    throw ThrowHelper.CollectionReadOnly(Name);
                 AddOrUpdate(key, value);
             }
         }
 
         public bool ContainsKey(TKey key)
         {
-            return _Values.ContainsKey(key);
+            return OpenValues().ContainsKey(key);
         }
 
         public IEnumerator<TValue> GetEnumerator()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            foreach (var kvp in _Values)
+            foreach (var kvp in OpenValues())
                 yield return kvp.Value;
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
             return GetEnumerator();
         }
 
         public IEnumerable<KeyValuePair<TKey, TValue>> AsEnumerable()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            return _Values;
+            return OpenValues();
         }
 
         public void Compact()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            _FastDBStream.Compact();
+            OpenStream(write: true).Compact();
         }
 
-        public async Task CompactAsync()
+        public Task CompactAsync()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-            if (Options.IsReadOnlyEnabled)
-                throw ThrowHelper.CollectionReadOnly(Name);
-
-            await _FastDBStream.CompactAsync();
+            if (!TryOpenStream(true, out FastDBStream<TKey, TValue> stream, out Exception refusal))
+                return Task.FromException(refusal);
+            return stream.CompactAsync();
         }
 
         public int Count
         {
             get
             {
-                if (IsClosed)
-                    throw ThrowHelper.CollectionClosed(Name);
-
-                return _Values.Count;
+                return OpenValues().Count;
             }
         }
 
         public long GetSizeBytes()
         {
-            if (IsClosed)
-                throw ThrowHelper.CollectionClosed(Name);
-
-            return _FastDBStream.GetSizeBytes();
+            return OpenStream().GetSizeBytes();
         }
 
         public ushort Version
         {
             get
             {
-                if (_FastDBStream != null)
-                    return _FastDBStream.Version;
+                FastDBStream<TKey, TValue> stream = _FastDBStream;
+                if (stream != null)
+                    return stream.Version;
                 else
                     return 0;
             }
@@ -366,8 +368,9 @@ namespace Stellar.Collections
         {
             get
             {
-                if (_FastDBStream != null)
-                    return _FastDBStream.FilePath;
+                FastDBStream<TKey, TValue> stream = _FastDBStream;
+                if (stream != null)
+                    return stream.FilePath;
                 else
                     return null;
             }
@@ -377,8 +380,9 @@ namespace Stellar.Collections
         {
             get
             {
-                if (_FastDBStream != null)
-                    return _FastDBStream.IsEncrypted;
+                FastDBStream<TKey, TValue> stream = _FastDBStream;
+                if (stream != null)
+                    return stream.IsEncrypted;
                 else
                     return Options.IsEncryptionEnabled;
             }
@@ -388,8 +392,9 @@ namespace Stellar.Collections
         {
             get
             {
-                if (_FastDBStream != null)
-                    return _FastDBStream.IsCompressed;
+                FastDBStream<TKey, TValue> stream = _FastDBStream;
+                if (stream != null)
+                    return stream.IsCompressed;
                 else
                     return Options.IsCompressionEnabled;
             }
@@ -397,7 +402,10 @@ namespace Stellar.Collections
 
         public override string ToString()
         {
-            return $"{Name}[{_Values.Count}]";
+            ConcurrentDictionary<TKey, TValue> values = _Values;
+            if (values == null)
+                return $"{Name}[closed]";
+            return $"{Name}[{values.Count}]";
         }
     }
 }

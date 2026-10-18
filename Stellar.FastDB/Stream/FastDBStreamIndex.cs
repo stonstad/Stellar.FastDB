@@ -37,6 +37,10 @@ namespace Stellar.Collections
         private long _DeadBytes;
         private int _ReclaimableEntries;    // dead entries and tombstones
 
+        // records load couldn't index, as not even their key could be read: compaction stays off while the file holds
+        // any, as it could move them past a newer record of their key, or drop them
+        private int _UnreadableRecords;
+
         private void TrackPut(TKey key, long position, int length, int blockOffset)
         {
             int index = _Entries.Count;
@@ -85,6 +89,7 @@ namespace Stellar.Collections
             _LiveBytes = 0;
             _DeadBytes = 0;
             _ReclaimableEntries = 0;
+            _UnreadableRecords = 0;
         }
     }
 }

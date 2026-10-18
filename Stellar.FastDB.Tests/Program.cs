@@ -20,6 +20,10 @@ namespace Stellar.Collections.Tests
             if (args.Length > 0 && args[0] == "failurecheck")
                 return await FailureCheck.Run(args);
 
+            // compaction on layouts that once kept the sweep from finishing: sweepcheck [--config=Name] [--case=Name]
+            if (args.Length > 0 && args[0] == "sweepcheck")
+                return await SweepCheck.Run(args);
+
             int runs = 1;
             int n = 5000;
 

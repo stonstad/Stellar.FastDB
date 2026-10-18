@@ -1,5 +1,5 @@
-# Stellar.FastDB - High Performance Embedded Storage for C# (.NET)
-Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
+# FastDB - High-Performance Embedded Storage for C# (.NET)
+Stellar.FastDB is an exceptionally fast document store for C# that is 100x faster than similar products. Designed for optimal performance and high concurrency, it excels in embedded workflows that demand efficiency.
 
 ![Embedded Storage Performance - 10,000 Records](https://raw.githubusercontent.com/stonstad/Stellar.FastDB/main/fastdb-benchmark-10000.png)
 
@@ -9,8 +9,8 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x f
 
 - Serverless, embedded document storage.
 - Simple, thread-safe API that closely resembles a .NET dictionary, with async/await support.
-- Entirely written in C#, targeting .NET 8, 9 and 10.
-- Delivered as a compact, single DLL (about 80 KB).
+- Written entirely in C#, targeting .NET 8, 9 and 10.
+- Delivered as a single, compact DLL (about 80 KB).
 - Supports multiple concurrent readers and writers. Writers that arrive together share one disk write.
 - Automatic background compaction reclaims space without stopping writes.
 - Fast loading: records are decoded on all cores.
@@ -19,9 +19,9 @@ Stellar.FastDB is an exceptionally fast document store for C# with speeds 100x f
 - LZ4 compression and AES encryption.
 - Supports querying with LINQ.
 - Ensures end-to-end type safety for data integrity.
-- Accomodates composite keys for complex data structuring.
+- Accommodates composite keys for complex data structuring.
 - Open source and free for both personal and commercial use.
-- **Install from NuGet**. [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB).
+- **Install from NuGet:** [Install-Package Stellar.FastDB](https://www.nuget.org/packages/Stellar.FastDB)
 
 ---
 ## TL;DR
@@ -35,7 +35,7 @@ A detailed list of [benchmarks](https://github.com/stonstad/Stellar.Benchmarks/t
 
 Measured on an AMD Ryzen 9 7950X with Windows 11 and .NET 10, using BenchmarkDotNet (1 warmup, 3 iterations).
 
- Method      | Op/s      | FileSize |
+ Method      | Op/s      | File Size |
 ------------ |----------:|---------:|
  Insert 10,000 | 339,593 | 663 KB |
  Delete 10,000 | 356,389 | 0 KB |
@@ -46,23 +46,23 @@ Measured on an AMD Ryzen 9 7950X with Windows 11 and .NET 10, using BenchmarkDot
 ### Compared with other embedded databases
 
 #### Insert
- Method      | Product | Op/s      | FileSize |
+ Method      | Product | Op/s      | File Size |
 ------------ |-------- |----------:|---------:|
  **Insert 10,000** | <ins>FastDB</ins>  | **339,593** | **663 KB** |
  Insert 10,000 | VistaDB |   2,648 |   940 KB |
- Insert 10,000 | LiteDB  |   1,265 | 1,656 KB |
+ Insert 10,000 | LiteDB  |   1,265 | 1,664 KB |
  Insert 10,000 | SQLite  |     687 |   444 KB |
 
 #### Delete
- Method      | Product | Op/s      | FileSize |
+ Method      | Product | Op/s      | File Size |
 ------------ |-------- |----------:|---------:|
  **Delete 10,000** | <ins>FastDB</ins>  | **356,389** | **0 KB** |
- Delete 10,000 | VistaDB |   5,503 |   940 KB |
- Delete 10,000 | LiteDB  |   1,206 | 1,664 KB |
- Delete 10,000 | SQLite  |     697 |   444 KB |
+ Delete 10,000 | VistaDB |   5,503 |   N/A |
+ Delete 10,000 | LiteDB  |   1,206 |    24 KB |
+ Delete 10,000 | SQLite  |     697 |     8 KB |
 
 #### Upsert
- Method      | Product | Op/s      | FileSize |
+ Method      | Product | Op/s      | File Size |
 ------------ |-------- |----------:|---------:|
  **Upsert 10,000** | <ins>FastDB</ins>  | **315,831** | **614 KB** |
  Upsert 10,000 | LiteDB  |   3,460 | 1,664 KB |
@@ -70,20 +70,20 @@ Measured on an AMD Ryzen 9 7950X with Windows 11 and .NET 10, using BenchmarkDot
  Upsert 10,000 | SQLite  |     679 |   444 KB |
 
 #### Bulk Insert
- Method    | Product | Op/s      | FileSize |
+ Method    | Product | Op/s      | File Size |
 ---------- |-------- |----------:|---------:|
  **Bulk 10,000** | <ins>FastDB</ins>  | **2,686,343** |   **614 KB** |
  Bulk 10,000 | SQLite  | 303,470 |   444 KB |
- Bulk 10,000 | LiteDB  |  55,231 |     8 KB |
+ Bulk 10,000 | LiteDB  |  55,231 | 1,664 KB |
  Bulk 10,000 | VistaDB |   2,706 |   952 KB |
 
 #### Query
- Method     | Product | Op/s         | FileSize |
+ Method     | Product | Op/s         | File Size |
 ----------- |-------- |-------------:|---------:|
  **Query 10,000** | <ins>FastDB</ins>  | **8,733,116** | **663 KB** |
  Query 10,000 | SQLite  |  1,892,530 |   444 KB |
  Query 10,000 | VistaDB |    574,299 |   940 KB |
- Query 10,000 | LiteDB  |    404,380 | 1,656 KB |
+ Query 10,000 | LiteDB  |    404,380 | 1,664 KB |
 
  ---
 
@@ -91,7 +91,7 @@ Measured on an AMD Ryzen 9 7950X with Windows 11 and .NET 10, using BenchmarkDot
 
 **Why was Stellar.FastDB created?**
 
-As a game developer, I need a high-concurrency storage solution for player-managed game servers. Requiring players to install local databases isn’t practical. However, most available storage options are either too slow or struggle with concurrent reads and writes. These limitations make them unsuitable for game servers, which require high volume reads and writes without performance issues.
+As a game developer, I need a high-concurrency storage solution for player-managed game servers. Requiring players to install local databases isn't practical. However, most available storage options are either too slow or struggle with concurrent reads and writes. These limitations make them unsuitable for game servers, which require high-volume reads and writes without performance issues.
 
 **Should I use Stellar.FastDB?**
 
@@ -101,9 +101,9 @@ Use Stellar.FastDB if you need:
 - High throughput for both reading and writing data.
 - A minimal data storage footprint.
 
-Do not use this database if you need:
-- Sharing conections between processes.
-- Storing data in a single file. Each collection is stored in its own file.
+Do not use this database if you need to:
+- Share connections between processes.
+- Store all data in a single file. Each collection is stored in its own file.
 
 ## How to use Stellar.FastDB
 - Stellar.FastDB's APIs are designed to be intuitive and closely resemble .NET collections. If you are familiar with using a Dictionary, you'll find the transition to FastDB seamless!
@@ -112,7 +112,7 @@ Do not use this database if you need:
 
 ## Durability
 
-The `Durability` option decides when a write returns and how write failures are survived.
+The `Durability` option decides when a write returns and which failures a write survives.
 
 | Mode | A write returns once | Survives a process crash | Survives a power loss |
 |---|---|:---:|:---:|
@@ -124,7 +124,7 @@ The `Durability` option decides when a write returns and how write failures are 
 
 **Buffered** is the fastest mode. A background thread writes the queue to the file; `Flush()` or `FlushAsync()` waits for it. `MaxBufferedBytes` (256 MB by default) caps the queue, and writes wait when it is full.
 
-**When a write fails** (for example, a full disk), the change stays in memory but not in the file. The call throws an `IOException`, or returns false if `StorageFailureBehavior` is `ReturnFalse`. In `Buffered` mode, the next `Flush()` throws instead.
+**When a write fails** (for example, a full disk), the change stays in memory but isn't written to the file. The call throws an `IOException`, or returns false if `StorageFailureBehavior` is `ReturnFalse`. In `Buffered` mode, the next `Flush()` throws instead.
 
 **After a crash**, earlier writes are intact: every block carries a checksum, and a partly written block is discarded on open.
 
@@ -249,7 +249,7 @@ FastDB fastDB = new FastDB(options);
 
 FastDB 2.0, 10,000 records of about 2 KB each:
 
-|  Method                           | Op/s      | FileSize |
+|  Method                           | Op/s      | File Size |
 |--------------------------------- |----------:|---------:|
 | Large                            | 155,679 | 20,106 KB |
 | Large Encrypted                  | 127,716 | 20,214 KB |
@@ -258,7 +258,7 @@ FastDB 2.0, 10,000 records of about 2 KB each:
 
 ### Optional Serialization Contracts
 
-To achieve the smallest possible storage footprint, Stellar.FastDB supports serialization contracts using MessagePack. By adding [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) attributes to your data models (as shown in the example below), you can instruct the serializer to package the data more efficiently. Note that this feature is disabled by default and is typically not included in most benchmarks.
+To achieve the smallest possible storage footprint, Stellar.FastDB supports serialization contracts using MessagePack. By adding [MessagePack](https://github.com/MessagePack-CSharp/MessagePack-CSharp) attributes to your data models (as shown in the example below), you can instruct the serializer to package the data more efficiently. Note that this feature is disabled by default and is not used in most benchmarks.
 
 ```C#
 // create a class
@@ -294,7 +294,7 @@ fastDB.Close();
 
 FastDB 2.0, 10,000 records:
 
-| Serializer | Op/s      | FileSize |
+| Serializer | Op/s      | File Size |
 |--------- |----------:|---------:|
 | Default 10,000  | 325,095 |   663 KB |
 | Contract 10,000 | 324,891 |   379 KB |
@@ -365,9 +365,9 @@ Each of these is `Exception` (the default) or `ReturnFalse`. The duplicate-key o
 | `RemoveKeyNotFoundBehavior` | `Exception` | `Remove` is given a key that doesn't exist. |
 | `StorageFailureBehavior` | `Exception` | A write to the file fails. The change stays in memory. |
 | `SerializationFailureBehavior` | `Exception` | A record can't be serialized. Nothing is changed. |
-| `DeserializationFailureBehavior` | `Exception` | A record in the file can't be deserialized when a collection opens. With `ReturnFalse`, the record is skipped. |
+| `DeserializationFailureBehavior` | `Exception` | A record in the file can't be deserialized when a collection opens. With `ReturnFalse`, loading carries on: a key whose latest value can't be read is left out until it's written again, though `Remove` still removes it. If not even a record's key can be read, the collection isn't compacted, and `Compact()` throws, until it's cleared or opened with types that can read it. |
 
 
 ## Contact
 
-I may be contacted on the [Stellar Conquest Discord (stonstad)](https://discord.gg/uQsAeze) and [X (stonstad)](https://x.com/ShaunTonstad).
+You can reach me on the [Stellar Conquest Discord (stonstad)](https://discord.gg/uQsAeze) or on [X (stonstad)](https://x.com/ShaunTonstad).

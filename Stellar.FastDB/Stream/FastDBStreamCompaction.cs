@@ -68,6 +68,9 @@ namespace Stellar.Collections
 
             lock (_SweepLock)
             {
+                if (_UnreadableRecords > 0)
+                    throw ThrowHelper.CompactionBlocked(FilePath, _UnreadableRecords);
+
                 int passes = MaxPassesPerCompact;
                 while (SweepStep(ref passes))
                 {
@@ -112,7 +115,7 @@ namespace Stellar.Collections
         private void OnCommitted(long deadBytes)
         {
             double effort = Options.CompactionEffortValue;
-            if (effort <= 0 || Options.IsReadOnlyEnabled)
+            if (effort <= 0 || Options.IsReadOnlyEnabled || _UnreadableRecords > 0)
                 return;
 
             Volatile.Write(ref _Commits, _Commits + 1);
@@ -184,9 +187,9 @@ namespace Stellar.Collections
         private bool ShouldSweep(long minimumBudget)
         {
             double effort = Options.CompactionEffortValue;
-            if (effort <= 0 || _Handle == null || (!_Sweeping && _ReclaimableEntries == 0))
+            if (effort <= 0 || _Handle == null || _UnreadableRecords > 0 || (!_Sweeping && _ReclaimableEntries == 0))
                 return false;
-            return effort >= 1 || Interlocked.Read(ref _SweepBudget) >= minimumBudget;
+            return effort >= 1 || Volatile.Read(ref _SweepBudget) >= minimumBudget;
         }
 
         private void ScheduleSweeper()
@@ -218,7 +221,8 @@ namespace Stellar.Collections
             }
             finally
             {
-                Volatile.Write(ref _SweeperScheduled, 0);
+                // a full fence, so the check below can't read the budget before the reset is visible to committers
+                Interlocked.Exchange(ref _SweeperScheduled, 0);
             }
 
             // a commit may have earned budget after the last check, while this sweeper was still marked as running
@@ -242,7 +246,7 @@ namespace Stellar.Collections
             {
                 lock (_CommitLock)
                 {
-                    if (_Handle == null)
+                    if (_Handle == null || _UnreadableRecords > 0)
                         return false;
 
                     if (!_Sweeping)
@@ -385,8 +389,10 @@ namespace Stellar.Collections
         // the records it keeps into the gap's output or the end-of-file output
         private void PlanStep(long source, int chunk)
         {
-            // a small gap can't take much, so grow it by moving records to the end of the file instead
-            bool grow = _GapSize < MinSweepGap;
+            // a small gap can't take much, so grow it by moving records to the end of the file instead, unless the rest of
+            // the file fits in it: moved to the end, those records would come around again, lap after lap, while the gap
+            // grew by only their size each time
+            bool grow = _GapSize < MinSweepGap && _FileLength - source > _GapSize;
             long room = 0;
             if (!grow)
                 room = Math.Min(_GapSize, MaxSweepStep);
@@ -423,10 +429,12 @@ namespace Stellar.Collections
                     position = contentStart + contentLength;
                 }
 
+                // a block bigger than one step still goes into the gap if the gap can hold it: moved to the end of the
+                // file, it would come around again, bigger than a step again, and the sweep would never finish
                 bool toGap = false;
                 if (keepBound > 0)
                 {
-                    if (!grow && gapLength + keepBound <= room)
+                    if (!grow && (gapLength + keepBound <= room || (!anyToGap && gapLength + keepBound <= _GapSize)))
                         toGap = true;
                     else if (!grow && anyToGap)
                         break;
